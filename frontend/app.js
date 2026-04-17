@@ -21,12 +21,12 @@ let eventSources = {};
 let machineHistory = {};
 let forensicChart = null;
 const MAX_HISTORY = 50;
-const machineLocations = {
-    'CNC_01': 7,    // Sec_B, Lvl_2
-    'CNC_02': 14,   // Sec_C, Lvl_3
-    'PUMP_03': 22,  // Sec_D, Lvl_5
-    'CONVEYOR_04': 29 // Sec_E, Lvl_6
-};
+const sensorMap = [
+    { key: 'temperature_C', fn: getTempClass, label: 'TEMP' },
+    { key: 'vibration_mm_s', fn: getVibClass, label: 'VIB' },
+    { key: 'rpm', fn: (v) => 'text-on-background', label: 'RPM' }, // RPM is nominal for now
+    { key: 'current_A', fn: getLoadClass, label: 'LOAD' }
+];
 
 // Initialization
 function init() {
@@ -294,27 +294,31 @@ function renderHeatmap() {
     if (!heatmap) return;
     heatmap.innerHTML = '';
     
-    for (let i = 0; i < 36; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'transition-all duration-500 border border-outline-variant/5';
-        
-        // Find if a machine is at this location
-        const machineId = Object.keys(machineLocations).find(k => machineLocations[k] === i);
-        
-        if (machineId) {
-            const risk = machineData[machineId].risk;
-            const color = risk >= 0.8 ? 'bg-error' : (risk >= 0.6 ? 'bg-secondary' : 'bg-primary-container/40');
-            cell.className += ` ${color} cursor-help relative scale-105 z-10`;
-            if (risk >= 0.8) cell.className += ' animate-pulse shadow-[0_0_15px_rgba(255,76,76,0.5)]';
+    // Matrix: Rows = Sensors, Cols = Machines
+    for (let row = 0; row < 4; row++) {
+        const sensor = sensorMap[row];
+        for (let col = 0; col < 4; col++) {
+            const mId = machines[col];
+            const data = machineData[mId];
+            const cell = document.createElement('div');
             
-            cell.title = `${machineId} | Risk: ${(risk*100).toFixed(0)}%`;
-            cell.onclick = (e) => { e.stopPropagation(); selectedMachine = machineId; switchView('diagnostics'); };
-        } else {
-            const intensity = Math.random();
-            cell.className += intensity > 0.95 ? ' bg-white/5' : ' bg-surface-container-high/40';
+            const colorClass = sensor.fn(data.metrics[sensor.key]);
+            // Convert text-color class to bg-color for the matrix
+            let bgColor = 'bg-surface-container-high/40';
+            if (colorClass === 'text-error') bgColor = 'bg-error animate-pulse shadow-[0_0_10px_rgba(255,76,76,0.3)]';
+            if (colorClass === 'text-primary-container') bgColor = 'bg-primary-container/80';
+            
+            cell.className = `transition-all duration-300 border border-outline-variant/5 ${bgColor} cursor-help`;
+            cell.title = `${mId} | ${sensor.label}: ${data.metrics[sensor.key]?.toFixed(1)}`;
+            
+            cell.onclick = (e) => { 
+                e.stopPropagation(); 
+                selectedMachine = mId; 
+                switchView('diagnostics'); 
+            };
+            
+            heatmap.appendChild(cell);
         }
-        
-        heatmap.appendChild(cell);
     }
 }
 

@@ -150,17 +150,18 @@
                     <div class="lg:col-span-4 flex flex-col gap-6">
                         <!-- Risk Heatmap -->
                         <div class="bg-surface-container-low p-6 border border-outline-variant/15">
-                            <h3 class="font-headline font-bold text-sm tracking-widest uppercase mb-4 text-[#FFD700]">RISK_GEO_MAPPING</h3>
+                            <h3 class="font-headline font-bold text-sm tracking-widest uppercase mb-4 text-[#FFD700]">HEALTH_RISK_MATRIX</h3>
                             <div class="relative">
-                                <!-- Sector Labels -->
-                                <div class="absolute -left-6 top-0 bottom-0 flex flex-col justify-around text-[8px] font-mono text-outline/50 py-2 uppercase">
-                                    <span>Sec_A</span><span>Sec_B</span><span>Sec_C</span><span>Sec_D</span><span>Sec_E</span><span>Sec_F</span>
+                                <!-- Sensor Labels (Rows) -->
+                                <div class="absolute -left-6 top-0 bottom-0 flex flex-col justify-around text-[9px] font-mono text-outline/50 py-2 uppercase">
+                                    <span>TEMP</span><span>VIBR</span><span>RPM_</span><span>LOAD</span>
                                 </div>
-                                <div class="grid grid-cols-6 grid-rows-6 gap-1 aspect-square" id="heatmap-grid">
-                                    <!-- Heatmap cells injected by JS -->
+                                <div class="grid grid-cols-4 grid-rows-4 gap-1 aspect-square" id="heatmap-grid">
+                                    <!-- Health cells injected by JS -->
                                 </div>
-                                <div class="flex justify-around text-[8px] font-mono text-outline/50 mt-2 uppercase">
-                                    <span>Lvl_1</span><span>Lvl_2</span><span>Lvl_3</span><span>Lvl_4</span><span>Lvl_5</span><span>Lvl_6</span>
+                                <!-- Machine Labels (Columns) -->
+                                <div class="flex justify-around text-[9px] font-mono text-outline/50 mt-2 uppercase">
+                                    <span>CNC1</span><span>CNC2</span><span>PUMP</span><span>CONV</span>
                                 </div>
                             </div>
                         </div>
