@@ -108,15 +108,52 @@ function updateMachineData(mId, reading) {
     }
 }
 
-function calculateClientRisk(mId) {
-    const metrics = machineData[mId].metrics;
-    const base = baseValues[mId];
-    let risk = 0.1;
-    
-    if (metrics.temperature_C > base.temperature_C * 1.2) risk += 0.4;
-    if (metrics.vibration_mm_s > base.vibration_mm_s * 2.0) risk += 0.4;
-    
+    const prevRisk = machineData[mId].risk;
     machineData[mId].risk = Math.min(1.0, risk);
+
+    // Trigger alert if risk spikes to Critical
+    if (machineData[mId].risk >= 0.8 && prevRisk < 0.8) {
+        addAlert(mId, 'Critical Anomaly Detected', `Significant deviation in ${mId} metrics. Recommendation: Immediate Inspection.`);
+    }
+}
+
+function addAlert(machineId, title, message) {
+    const alert = {
+        id: `AL-${Date.now()}`,
+        machineId,
+        title,
+        message,
+        timestamp: new Date().toLocaleTimeString(),
+        type: 'critical'
+    };
+    alerts.unshift(alert);
+    if (alerts.length > 5) alerts.pop();
+    renderAlertFeed();
+    
+    // Also update Diagnostics if this machine is selected
+    if (selectedMachine === machineId) {
+        document.getElementById('ai-narrative').innerHTML = `<span class="text-error font-bold">[!] ${alert.timestamp}</span>: ${message}`;
+    }
+}
+
+function renderAlertFeed() {
+    const feed = document.getElementById('dashboard-alert-feed');
+    if (!feed) return;
+    feed.innerHTML = '';
+
+    alerts.forEach(alert => {
+        const item = document.createElement('div');
+        item.className = 'border-l-2 border-error pl-4 py-2 bg-error/5 hover:bg-error/10 transition-colors cursor-help';
+        item.innerHTML = `
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-[10px] font-black text-error uppercase">${alert.machineId}</span>
+                <span class="text-[8px] font-mono text-outline/50">${alert.timestamp}</span>
+            </div>
+            <p class="text-[10px] font-bold text-on-surface uppercase mb-1">${alert.title}</p>
+            <p class="text-[9px] text-on-surface-variant leading-tight">${alert.message}</p>
+        `;
+        feed.appendChild(item);
+    });
 }
 
 function setupEventListeners() {
@@ -228,6 +265,7 @@ function renderDashboard() {
     });
 
     renderHeatmap();
+    renderAlertFeed();
 }
 
 function generateGraphPoints(risk) {
