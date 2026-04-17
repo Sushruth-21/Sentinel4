@@ -12,7 +12,7 @@ async def fetch_history_for_machine(session: aiohttp.ClientSession, machine_id: 
         async with session.get(url) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                return data.get("history", [])
+                return data.get("readings", [])
     except Exception as e:
         print(f"Error fetching history for {machine_id}: {e}")
     return []

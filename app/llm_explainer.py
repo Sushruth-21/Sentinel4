@@ -15,20 +15,18 @@ def build_prompt(machine_id: str, risk: float, details: dict) -> str:
         f"Risk score: {risk:.2f}",
         f"Warning sensors: {', '.join(warning_sensors) or 'none'}",
         f"Z-scores: {sensor_z}",
-        "Explain in 2-3 sentences:",
-        "1) What is likely happening physically.",
-        "2) Which component to inspect first.",
-        "3) Whether immediate shutdown is needed or scheduled check is fine.",
+        "Task: Explain the most likely physical cause in ONE short sentence.",
+        "Be extremely concise. Do not use filler words."
     ]
     if is_compound:
-        lines.append("Focus on the interaction between sensors, not just single spikes.")
+        lines.append("Focus on the multi-sensor correlation.")
         
     return "\n".join(lines)
 
 def explain_alert(machine_id: str, risk: float, details: dict) -> str:
     if not GROQ_API_KEY:
         # fallback if key missing
-        return "LLM not configured. Check coolant and mechanical parts based on high sensor values."
+        return "Anomaly detected. Check mechanical and thermal components."
         
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -40,17 +38,17 @@ def explain_alert(machine_id: str, risk: float, details: dict) -> str:
     payload = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You explain machine anomalies simply for engineers."},
+            {"role": "system", "content": "You are a concise industrial diagnostic assistant. Reply in one short sentence maximum."},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
-        "max_tokens": 200,
+        "temperature": 0.1,
+        "max_tokens": 80,
     }
     
     try:
-        resp = requests.post(GROQ_BASE_URL, headers=headers, json=payload, timeout=10)
+        resp = requests.post(GROQ_BASE_URL, headers=headers, json=payload, timeout=7)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Could not get explanation from LLM ({e}). Use raw sensor info to decide next steps."
+        return f"Anomaly detected. Diagnostic unavailable ({e})."
