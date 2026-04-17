@@ -219,6 +219,10 @@ function getStatusColor(risk) {
     return 'primary-container';
 }
 
+function getTempClass(v) { return v > 100 ? 'text-error' : (v > 85 ? 'text-primary-container' : 'text-on-background'); }
+function getVibClass(v)  { return v > 5   ? 'text-error' : (v > 3 ? 'text-primary-container' : 'text-on-background'); }
+function getLoadClass(v) { return v > 22  ? 'text-error' : (v > 18 ? 'text-primary-container' : 'text-on-background'); }
+
 function renderDashboard() {
     const grid = document.getElementById('machine-grid');
     if (!grid) return;
@@ -248,11 +252,11 @@ function renderDashboard() {
             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">TEMP</p>
-                    <p class="font-mono text-lg ${data.risk > 0.8 ? 'text-error' : 'text-on-background'} font-bold">${data.metrics.temperature_C?.toFixed(1) || '--'}°C</p>
+                    <p class="font-mono text-lg ${getTempClass(data.metrics.temperature_C)} font-bold">${data.metrics.temperature_C?.toFixed(1) || '--'}°C</p>
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">VIB</p>
-                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.vibration_mm_s?.toFixed(2) || '--'}</p>
+                    <p class="font-mono text-lg ${getVibClass(data.metrics.vibration_mm_s)} font-bold">${data.metrics.vibration_mm_s?.toFixed(2) || '--'}</p>
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">RPM</p>
@@ -260,7 +264,7 @@ function renderDashboard() {
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">LOAD</p>
-                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.current_A?.toFixed(1) || '--'}A</p>
+                    <p class="font-mono text-lg ${getLoadClass(data.metrics.current_A)} font-bold">${data.metrics.current_A?.toFixed(1) || '--'}A</p>
                 </div>
             </div>
             <div class="h-8 w-full bg-surface-container-lowest relative overflow-hidden">
