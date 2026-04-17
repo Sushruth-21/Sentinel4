@@ -2,14 +2,14 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
-## [1.7.0] - 2026-04-17
+## [1.9.0] - 2026-04-17
 
 ### Added
-- **Health Risk Matrix**: Re-engineered the "Risk Geo Mapping" into a 4x4 analytical matrix comparing sensor health (Temp, Vib, RPM, Load) across all industrial assets.
-- **Sensor-Level Visualization**: Each cell in the matrix now represents a specific sensor's health status, tied directly to the simulation thresholds.
-- **Direct-to-Source Diagnostics**: Refined matrix interactions to allow one-click jumping from a specific sensor anomaly in the matrix to that machine's forensic view.
+- **API Robustness (Groq)**: Implemented exponential backoff and jittered retry logic in the LLM explainer to gracefully handle `429 Too Many Requests` errors.
+- **Intelligent Alert Damping**: Introduced a 60-second cooldown period per machine in the `AlertStore`.
+- **Priority Escalation**: Added logic to bypass the cooldown if a machine's risk score jumps significantly (>0.1), ensuring critical failure acceleration is still reported immediately.
 
-## [1.6.0] - 2026-04-17
+## [1.8.0] - 2026-04-17
 
 ### Fixed
 - **LLM Explanation Parsing**: Corrected list indexing error in `app/llm_explainer.py`.
