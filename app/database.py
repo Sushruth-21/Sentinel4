@@ -40,6 +40,20 @@ class MachineEvent(Base):
     details_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
+class ScheduledMaintenance(Base):
+    __tablename__ = "scheduled_maintenance"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    machine_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    scheduled_date: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, index=True)
+    maintenance_type: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled")
+    technician: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="scheduled")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+
+
 class TelemetryRepository:
     def __init__(self, database_url: str):
         self.database_url = self._normalize_database_url(database_url)
@@ -507,3 +521,47 @@ class TelemetryRepository:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def schedule_maintenance(self, machine_id: str, scheduled_date: datetime, maintenance_type: str = "scheduled", technician: Optional[str] = None, notes: Optional[str] = None) -> int:
+        maintenance = ScheduledMaintenance(
+            machine_id=machine_id,
+            scheduled_date=scheduled_date,
+            maintenance_type=maintenance_type,
+            technician=technician,
+            notes=notes,
+            status="scheduled",
+        )
+        with self.session_factory() as session:
+            try:
+                session.add(maintenance)
+                session.commit()
+                return maintenance.id
+            except Exception:
+                session.rollback()
+                raise
+
+    def get_maintenance_schedule(self, machine_id: Optional[str] = None, days_ahead: int = 30) -> list:
+        from datetime import timedelta
+        end_date = datetime.utcnow() + timedelta(days=days_ahead)
+        with self.session_factory() as session:
+            query = select(ScheduledMaintenance)
+            if machine_id:
+                query = query.where(ScheduledMaintenance.machine_id == machine_id)
+            query = query.where(ScheduledMaintenance.scheduled_date <= end_date)
+            query = query.where(ScheduledMaintenance.status == "scheduled")
+            query = query.order_by(ScheduledMaintenance.scheduled_date.asc())
+            rows = session.execute(query).scalars().all()
+            return [self._serialize_maintenance(row) for row in rows]
+
+    def _serialize_maintenance(self, row: ScheduledMaintenance) -> Dict[str, Any]:
+        return {
+            "id": row.id,
+            "machine_id": row.machine_id,
+            "scheduled_date": row.scheduled_date.isoformat() if row.scheduled_date else None,
+            "maintenance_type": row.maintenance_type,
+            "technician": row.technician,
+            "notes": row.notes,
+            "status": row.status,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        }

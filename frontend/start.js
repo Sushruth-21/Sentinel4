@@ -66,7 +66,8 @@ function proxyHistoryApi(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if ((req.url || '').startsWith('/api/history')) {
+  const url = req.url || '';
+  if (url.startsWith('/api/history') || url.startsWith('/api/maintenance')) {
     proxyHistoryApi(req, res);
     return;
   }

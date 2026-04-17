@@ -331,7 +331,10 @@ function setupEventListeners() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const viewId = btn.dataset.view;
+            const modalId = btn.dataset.modal;
             if (viewId) switchView(viewId);
+            if (modalId === 'schedule') openScheduleModal();
+            if (modalId === 'calendar-view') openCalendarViewModal();
         });
     });
 
@@ -2005,5 +2008,224 @@ function renderMaintenance() {
         });
     }
 }
+
+const SCHEDULE_API_URL = '/api/maintenance';
+
+function openScheduleModal() {
+    const modal = document.getElementById('schedule-modal');
+    if (!modal) return;
+    
+    const statusContainer = document.getElementById('device-status-summary');
+    if (statusContainer) {
+        statusContainer.innerHTML = '';
+        machines.forEach(m => {
+            const data = machineData[m];
+            const risk = data ? data.risk : 0;
+            let statusClass = 'bg-primary-container/30 text-primary-container';
+            let statusText = 'STABLE';
+            if (risk >= 0.8) {
+                statusClass = 'bg-error/30 text-error';
+                statusText = 'CRITICAL';
+            } else if (risk >= 0.6) {
+                statusClass = 'bg-warning/30 text-warning';
+                statusText = 'WARNING';
+            }
+            
+            const div = document.createElement('div');
+            div.className = `p-2 text-[10px] font-mono ${statusClass}`;
+            div.innerHTML = `<div class="font-bold">${m}</div><div>${statusText} (${risk.toFixed(2)})</div>`;
+            statusContainer.appendChild(div);
+        });
+    }
+    
+    const deviceSelect = document.getElementById('schedule-device-select');
+    if (deviceSelect) {
+        deviceSelect.innerHTML = '<option value="">Select a device</option>';
+        machines.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.innerText = m;
+            deviceSelect.appendChild(opt);
+        });
+    }
+    
+    const dateInput = document.getElementById('schedule-date-input');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    
+    modal.classList.remove('hidden');
+}
+
+function closeScheduleModal() {
+    const modal = document.getElementById('schedule-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function submitSchedule() {
+    const deviceSelect = document.getElementById('schedule-device-select');
+    const dateInput = document.getElementById('schedule-date-input');
+    const timeInput = document.getElementById('schedule-time-input');
+    const typeInput = document.getElementById('schedule-type-input');
+    const notesInput = document.getElementById('schedule-notes-input');
+    
+    const machineId = deviceSelect ? deviceSelect.value : '';
+    const scheduledDate = dateInput ? dateInput.value : '';
+    const scheduledTime = timeInput ? timeInput.value : '09:00';
+    const maintenanceType = typeInput ? typeInput.value : 'scheduled';
+    const notes = notesInput ? notesInput.value : '';
+    
+    if (!machineId) { alert('Please select a device'); return; }
+    if (!scheduledDate) { alert('Please select a date'); return; }
+    
+    try {
+        const response = await fetch(`${SCHEDULE_API_URL}/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                machine_id: machineId,
+                scheduled_date: `${scheduledDate}T${scheduledTime}:00`,
+                maintenance_type: maintenanceType,
+                notes: notes,
+            }),
+        });
+        
+        if (response.ok) {
+            closeScheduleModal();
+            alert('Schedule set successfully!');
+        } else {
+            alert('Failed to set schedule');
+        }
+    } catch (err) {
+        console.error('Schedule error:', err);
+        alert('Failed to set schedule. Ensure backend is running.');
+    }
+}
+
+let calendarViewMonth = new Date().getMonth();
+let calendarViewYear = new Date().getFullYear();
+let scheduledMaintenanceData = [];
+
+async function loadScheduledMaintenance() {
+    try {
+        const response = await fetch(`${SCHEDULE_API_URL}/schedule?days_ahead=60`);
+        if (response.ok) {
+            const data = await response.json();
+            scheduledMaintenanceData = data.schedule || [];
+        }
+    } catch (err) {
+        console.warn('Cannot load maintenance schedule:', err);
+        scheduledMaintenanceData = [];
+    }
+}
+
+function openCalendarViewModal() {
+    const modal = document.getElementById('calendar-view-modal');
+    if (!modal) return;
+    
+    loadScheduledMaintenance().then(() => {
+        renderCalendarView();
+        renderUpcomingSchedules();
+    });
+    
+    modal.classList.remove('hidden');
+}
+
+function closeCalendarViewModal() {
+    const modal = document.getElementById('calendar-view-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderCalendarView() {
+    const grid = document.getElementById('calendar-view-grid');
+    const monthLabel = document.getElementById('cal-view-month');
+    if (!grid || !monthLabel) return;
+
+    const monthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+    monthLabel.innerText = `${monthNames[calendarViewMonth]} ${calendarViewYear}`;
+    grid.innerHTML = '';
+
+    const firstDay = new Date(calendarViewYear, calendarViewMonth, 1).getDay();
+    const daysInMonth = new Date(calendarViewYear, calendarViewMonth + 1, 0).getDate();
+
+    for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        grid.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        const dateStr = `${calendarViewYear}-${String(calendarViewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        const daySchedules = scheduledMaintenanceData.filter(m => m.scheduled_date && m.scheduled_date.startsWith(dateStr));
+
+        let bgClass = 'bg-surface-container-highest/20 hover:bg-surface-container-high cursor-pointer text-on-surface-variant';
+        if (daySchedules.length > 0) {
+            const types = [...new Set(daySchedules.map(s => s.maintenance_type))];
+            if (types.includes('emergency')) bgClass = 'bg-error/30 text-error border border-error/50';
+            else if (types.includes('inspection')) bgClass = 'bg-tertiary/30 text-tertiary border border-tertiary/50';
+            else bgClass = 'bg-primary-container/30 text-primary-container border border-primary-container/50';
+        }
+
+        const today = new Date();
+        const isToday = today.getDate() === day && today.getMonth() === calendarViewMonth && today.getFullYear() === calendarViewYear;
+
+        cell.className = `text-[10px] font-mono p-2 text-center ${bgClass} ${isToday ? 'ring-1 ring-primary-container' : ''}`;
+        cell.innerHTML = `<div>${day}</div>${daySchedules.length > 0 ? `<div class="text-[8px]">${daySchedules.length}</div>` : ''}`;
+        grid.appendChild(cell);
+    }
+}
+
+function renderUpcomingSchedules() {
+    const container = document.getElementById('upcoming-schedules');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const upcoming = scheduledMaintenanceData
+        .filter(m => m.status === 'scheduled')
+        .sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date))
+        .slice(0, 5);
+    
+    if (upcoming.length === 0) {
+        container.innerHTML = '<div class="text-[10px] text-outline">No scheduled maintenance</div>';
+        return;
+    }
+    
+    upcoming.forEach(s => {
+        const date = new Date(s.scheduled_date);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        
+        let typeClass = 'bg-primary-container/30 text-primary-container';
+        if (s.maintenance_type === 'emergency') typeClass = 'bg-error/30 text-error';
+        else if (s.maintenance_type === 'inspection') typeClass = 'bg-tertiary/30 text-tertiary';
+        
+        const div = document.createElement('div');
+        div.className = `p-2 text-[10px] font-mono flex justify-between items-center ${typeClass}`;
+        div.innerHTML = `<span>${s.machine_id}</span><span>${dateStr}</span>`;
+        container.appendChild(div);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const calViewPrev = document.getElementById('cal-view-prev');
+    const calViewNext = document.getElementById('cal-view-next');
+    
+    if (calViewPrev) {
+        calViewPrev.onclick = () => {
+            calendarViewMonth--;
+            if (calendarViewMonth < 0) { calendarViewMonth = 11; calendarViewYear--; }
+            renderCalendarView();
+        };
+    }
+    
+    if (calViewNext) {
+        calViewNext.onclick = () => {
+            calendarViewMonth++;
+            if (calendarViewMonth > 11) { calendarViewMonth = 0; calendarViewYear++; }
+            renderCalendarView();
+        };
+    }
+});
 
 init();

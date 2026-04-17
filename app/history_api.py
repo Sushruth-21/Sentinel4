@@ -169,13 +169,58 @@ def build_history_app(repo: TelemetryRepository) -> web.Application:
         deleted_events = repo.delete_events(machine_id=machine_id, start=start, end=end)
         return _with_cors(web.json_response({"deleted": deleted_readings + deleted_events, "telemetry": deleted_readings, "events": deleted_events}))
 
+    async def get_maintenance_schedule(request: web.Request) -> web.Response:
+        machine_id = request.query.get("machine_id")
+        try:
+            days_ahead = int(request.query.get("days_ahead", "30"))
+        except ValueError:
+            days_ahead = 30
+
+        try:
+            schedule = repo.get_maintenance_schedule(machine_id=machine_id, days_ahead=days_ahead)
+        except Exception as exc:
+            return _with_cors(web.json_response({"error": f"Failed to get schedule: {exc}"}, status=500))
+
+        return _with_cors(web.json_response({"schedule": schedule, "count": len(schedule)}))
+
+    async def create_maintenance_schedule(request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+        except Exception:
+            return _with_cors(web.json_response({"error": "Invalid JSON payload"}, status=400))
+
+        machine_id = str(payload.get("machine_id") or "").strip()
+        scheduled_date = _parse_iso_datetime(payload.get("scheduled_date"))
+        maintenance_type = str(payload.get("maintenance_type") or "scheduled").strip()
+        notes = str(payload.get("notes") or "").strip() or None
+
+        if not machine_id:
+            return _with_cors(web.json_response({"error": "machine_id is required"}, status=400))
+        if not scheduled_date:
+            return _with_cors(web.json_response({"error": "scheduled_date is required"}, status=400))
+
+        try:
+            maintenance_id = repo.schedule_maintenance(
+                machine_id=machine_id,
+                scheduled_date=scheduled_date,
+                maintenance_type=maintenance_type,
+                notes=notes,
+            )
+        except Exception as exc:
+            return _with_cors(web.json_response({"error": f"Failed to schedule maintenance: {exc}"}, status=500))
+
+        return _with_cors(web.json_response({"created": True, "id": maintenance_id}))
+
     app.router.add_route("OPTIONS", "/api/history", options_handler)
     app.router.add_route("OPTIONS", r"/api/history/{record_type}/{record_id}", options_handler)
+    app.router.add_route("OPTIONS", "/api/maintenance/schedule", options_handler)
     app.router.add_get("/api/history", get_history)
     app.router.add_post("/api/history/events", create_event)
     app.router.add_post("/api/history/snapshot", save_snapshot)
     app.router.add_delete("/api/history", delete_history)
     app.router.add_delete(r"/api/history/{record_type}/{record_id}", delete_single_history)
+    app.router.add_get("/api/maintenance/schedule", get_maintenance_schedule)
+    app.router.add_post("/api/maintenance/schedule", create_maintenance_schedule)
 
     return app
 

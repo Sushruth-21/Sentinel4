@@ -123,6 +123,12 @@
                 <button class="nav-btn flex items-center gap-3 px-4 py-3 font-headline text-[11px] tracking-widest uppercase transition-all" data-view="history">
                     <span class="material-symbols-outlined" data-icon="history">history</span> HISTORY
                 </button>
+                <button class="nav-btn flex items-center gap-3 px-4 py-3 font-headline text-[11px] tracking-widest uppercase transition-all" data-modal="schedule">
+                    <span class="material-symbols-outlined" data-icon="event_note">event_note</span> SCHEDULE
+                </button>
+                <button class="nav-btn flex items-center gap-3 px-4 py-3 font-headline text-[11px] tracking-widest uppercase transition-all" data-modal="calendar-view">
+                    <span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span> CALENDAR
+                </button>
             </nav>
         </aside>
 
@@ -612,7 +618,96 @@
         <button class="nav-btn p-2 text-[#999077]" data-view="history">
             <span class="material-symbols-outlined" data-icon="history">history</span>
         </button>
+        <button class="nav-btn p-2 text-[#999077]" data-modal="schedule">
+            <span class="material-symbols-outlined" data-icon="event_note">event_note</span>
+        </button>
+        <button class="nav-btn p-2 text-[#999077]" data-modal="calendar-view">
+            <span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span>
+        </button>
     </nav>
+
+    <!-- Schedule Modal -->
+    <div id="schedule-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeScheduleModal()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface-container-low border border-primary-container p-6 w-[90vw] max-w-md max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-headline font-bold text-lg tracking-widest uppercase text-primary-container">SET_SCHEDULE</h3>
+                <button onclick="closeScheduleModal()" class="text-outline hover:text-on-surface text-xl">&times;</button>
+            </div>
+            
+            <div class="mb-4 p-3 bg-surface-container-high border border-outline-variant/30">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-primary-container mb-2">DEVICE_STATUS_SUMMARY</label>
+                <div id="device-status-summary" class="grid grid-cols-2 gap-2"></div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-2">SELECT_DEVICE</label>
+                <select id="schedule-device-select" class="w-full bg-surface-container-high border border-outline text-on-surface text-sm py-2 px-3">
+                    <option value="">Select a device</option>
+                </select>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-2">SCHEDULE_DATE</label>
+                <input type="date" id="schedule-date-input" class="w-full bg-surface-container-high border border-outline text-on-surface text-sm py-2 px-3">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-2">SCHEDULE_TIME</label>
+                <input type="time" id="schedule-time-input" class="w-full bg-surface-container-high border border-outline text-on-surface text-sm py-2 px-3" value="09:00">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-2">MAINTENANCE_TYPE</label>
+                <select id="schedule-type-input" class="w-full bg-surface-container-high border border-outline text-on-surface text-sm py-2 px-3">
+                    <option value="scheduled">Scheduled</option>
+                    <option value="emergency">Emergency</option>
+                    <option value="inspection">Inspection</option>
+                </select>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-2">NOTES</label>
+                <textarea id="schedule-notes-input" class="w-full bg-surface-container-high border border-outline text-on-surface text-sm py-2 px-3 min-h-[60px] resize-none" placeholder="Add notes..."></textarea>
+            </div>
+            
+            <button onclick="submitSchedule()" class="w-full mt-4 bg-primary-container text-on-primary py-3 font-headline font-black text-xs tracking-widest hover:brightness-110">SET_REMINDER</button>
+        </div>
+    </div>
+
+    <!-- Calendar View Modal -->
+    <div id="calendar-view-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeCalendarViewModal()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface-container-low border border-primary-container p-6 w-[90vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-headline font-bold text-lg tracking-widest uppercase text-primary-container">MAINTENANCE_CALENDAR</h3>
+                <button onclick="closeCalendarViewModal()" class="text-outline hover:text-on-surface text-xl">&times;</button>
+            </div>
+            
+            <div class="flex items-center justify-between mb-4">
+                <button id="cal-view-prev" class="text-[10px] text-primary-container hover:text-on-surface">PREV</button>
+                <span id="cal-view-month" class="text-[12px] font-mono text-primary-container uppercase"></span>
+                <button id="cal-view-next" class="text-[10px] text-primary-container hover:text-on-surface">NEXT</button>
+            </div>
+            
+            <div class="grid grid-cols-7 gap-1 text-[8px] font-mono text-outline uppercase text-center mb-2">
+                <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
+            </div>
+            
+            <div id="calendar-view-grid" class="grid grid-cols-7 gap-1 mb-4"></div>
+            
+            <div class="flex justify-between gap-4 text-[9px] font-mono">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 bg-primary-container"></span> SCHEDULED</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 bg-error"></span> EMERGENCY</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 bg-tertiary"></span> INSPECTION</span>
+            </div>
+            
+            <div class="mt-4 p-3 bg-surface-container-high border border-outline-variant/30">
+                <label class="block text-[10px] font-mono uppercase tracking-widest text-primary-container mb-2">UPCOMING_MAINTENANCE</label>
+                <div id="upcoming-schedules" class="space-y-2 max-h-[150px] overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>
