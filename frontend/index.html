@@ -175,6 +175,25 @@
                                 <!-- Alerts injected by JS -->
                             </div>
                         </div>
+
+                        <!-- PDF Report Generator -->
+                        <div class="bg-surface-container-low p-6 border border-outline-variant/20">
+                            <h3 class="font-headline font-bold text-sm tracking-widest uppercase mb-4 text-primary-container">REPORT_GENERATOR</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block font-headline text-[10px] font-bold tracking-widest text-outline uppercase mb-2">REPORT_TYPE</label>
+                                    <select id="report-kind" title="Report type" aria-label="Report type" class="w-full bg-surface-container-high border-x-0 border-t-0 border-b border-outline text-on-surface text-xs py-3 uppercase tracking-widest">
+                                        <option value="summary">SUMMARY</option>
+                                        <option value="incident">INCIDENT</option>
+                                        <option value="maintenance">MAINTENANCE</option>
+                                    </select>
+                                </div>
+                                <button type="button" data-action="generate-report" class="w-full bg-primary-container text-on-primary py-4 font-headline font-black text-xs tracking-widest hover:brightness-110 transition-all uppercase">
+                                    EXPORT_PDF_REPORT
+                                </button>
+                                <p id="report-status" class="text-[10px] font-mono tracking-wider text-outline uppercase">READY</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -517,6 +536,18 @@
                         <div class="grid grid-cols-2 gap-2">
                             <button id="history-refresh-btn" type="button" class="w-full border border-primary-container text-primary-container py-2 font-headline font-black text-[10px] tracking-widest hover:bg-primary-container/10 transition-all">REFRESH</button>
                             <button id="history-delete-filtered-btn" type="button" class="w-full border border-error text-error py-2 font-headline font-black text-[10px] tracking-widest hover:bg-error/10 transition-all">DELETE FILTERED</button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 items-end">
+                            <div>
+                                <label class="block text-[10px] font-mono uppercase tracking-widest text-outline mb-1" for="history-export-format">Export</label>
+                                <select id="history-export-format" title="History export format" aria-label="History export format" class="w-full bg-surface-container-high border-x-0 border-t-0 border-b border-outline text-on-surface text-xs py-2">
+                                    <option value="csv">CSV</option>
+                                    <option value="json">JSON</option>
+                                    <option value="pdf">PDF</option>
+                                </select>
+                            </div>
+                            <button id="history-export-btn" type="button" class="w-full bg-primary-container text-on-primary py-2 font-headline font-black text-[10px] tracking-widest hover:brightness-110 transition-all">EXPORT</button>
                         </div>
 
                         <button id="history-save-current-btn" type="button" class="w-full bg-primary-container text-on-primary py-2 font-headline font-black text-[10px] tracking-widest hover:brightness-110 transition-all">SAVE CURRENT MACHINE DATA</button>

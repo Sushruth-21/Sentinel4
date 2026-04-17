@@ -54,6 +54,70 @@ const metricMeta = {
     rpm: { label: 'RPM', unit: 'RPM', color: '#72ebff', max: 3000 },
     current_A: { label: 'Current', unit: 'A', color: '#ffb3ae', max: 25 }
 };
+
+function normalizeSourceStatus(status) {
+    const value = String(status || '').trim().toLowerCase();
+    if (!value) return '';
+    if (['fault', 'critical', 'crit'].includes(value)) return 'CRITICAL';
+    if (['warning', 'warn'].includes(value)) return 'WARNING';
+    if (['running', 'operational', 'stable', 'ok', 'normal'].includes(value)) return 'OPERATIONAL';
+    if (['maintenance', 'maint'].includes(value)) return 'MAINTENANCE';
+    return value.toUpperCase();
+}
+
+function getRiskFromStatus(status) {
+    switch (normalizeSourceStatus(status)) {
+        case 'CRITICAL':
+            return 0.9;
+        case 'WARNING':
+            return 0.65;
+        case 'MAINTENANCE':
+            return 0.05;
+        default:
+            return 0.15;
+    }
+}
+
+function fallbackStatusFromMetrics(mId, metrics = {}) {
+    const temp = Number(metrics.temperature_C || 0);
+    const vib = Number(metrics.vibration_mm_s || 0);
+    const rpm = Number(metrics.rpm || 0);
+
+    if (mId === 'CNC_01') {
+        if (vib > 5.5) return 'CRITICAL';
+        if (vib > 3.5) return 'WARNING';
+        return 'OPERATIONAL';
+    }
+
+    if (mId === 'CNC_02') {
+        if (temp > 110) return 'CRITICAL';
+        if (temp > 95) return 'WARNING';
+        return 'OPERATIONAL';
+    }
+
+    if (mId === 'PUMP_03') {
+        if (vib > 5 || rpm < 2800) return 'WARNING';
+        return 'OPERATIONAL';
+    }
+
+    if (mId === 'CONVEYOR_04') {
+        if (vib > 1.5) return 'WARNING';
+        return 'OPERATIONAL';
+    }
+
+    return 'OPERATIONAL';
+}
+
+function getStatusSnapshot(mId, metrics = null, rawStatus = '') {
+    const normalizedRaw = normalizeSourceStatus(rawStatus);
+    const status = normalizedRaw || fallbackStatusFromMetrics(mId, metrics || {});
+    const statusRule = normalizedRaw ? `STREAM_STATUS=${String(rawStatus || '').toUpperCase()}` : `FALLBACK_RULE=${status}`;
+    return {
+        status,
+        statusRule,
+        risk: getRiskFromStatus(status)
+    };
+}
 const sensorMap = [
     { key: 'temperature_C', fn: getTempClass, label: 'TEMP' },
     { key: 'vibration_mm_s', fn: getVibClass, label: 'VIB' },
@@ -68,6 +132,9 @@ function init() {
             id: m,
             metrics: { ...baseValues[m] },
             risk: 0.15,
+            status: 'OPERATIONAL',
+            rawStatus: '',
+            statusRule: 'FALLBACK_RULE=OPERATIONAL',
             isMaintenance: false,
             lastUpdated: new Date()
         };
@@ -151,6 +218,11 @@ function updateMachineData(mId, reading) {
     
     machineData[mId].metrics = { ...reading };
     machineData[mId].lastUpdated = new Date(reading.timestamp);
+    machineData[mId].rawStatus = reading.status || '';
+    const statusSnapshot = getStatusSnapshot(mId, machineData[mId].metrics, reading.status);
+    machineData[mId].status = statusSnapshot.status;
+    machineData[mId].statusRule = statusSnapshot.statusRule;
+    machineData[mId].risk = statusSnapshot.risk;
 
     // Update history buffer
     const history = machineHistory[mId];
@@ -169,8 +241,6 @@ function updateMachineData(mId, reading) {
         history.rpm.shift();
         history.load.shift();
     }
-    
-    // In a live environment, the risk would come from the backend.
     calculateClientRisk(mId);
     
     if (activeView === 'dashboard') renderDashboard();
@@ -184,7 +254,10 @@ function updateMachineData(mId, reading) {
 
 function calculateClientRisk(mId) {
     const prevRisk = machineData[mId].risk;
-    machineData[mId].risk = computeDynamicMachineRisk(mId);
+    const statusSnapshot = getStatusSnapshot(mId, machineData[mId].metrics, machineData[mId].rawStatus);
+    machineData[mId].status = statusSnapshot.status;
+    machineData[mId].statusRule = statusSnapshot.statusRule;
+    machineData[mId].risk = statusSnapshot.risk;
 
     // Trigger alert if risk rises above the critical threshold
     if (machineData[mId].risk > CRITICAL_THRESHOLD && prevRisk <= CRITICAL_THRESHOLD) {
@@ -211,56 +284,8 @@ function computeLatestZScore(mId, metricKey) {
 }
 
 function computeDynamicMachineRisk(mId) {
-    const metrics = machineData[mId]?.metrics || {};
-    const base = baseValues[mId] || {};
-
-    const temp = Number(metrics.temperature_C || 0);
-    const vib = Number(metrics.vibration_mm_s || 0);
-    const rpm = Number(metrics.rpm || 0);
-    const current = Number(metrics.current_A || 0);
-
-    const rpmBase = Number(base.rpm || 1);
-    const rpmHighWarn = rpmBase * 1.2;
-    const rpmHighCritical = rpmBase * 1.35;
-    const rpmLowWarn = rpmBase * 0.8;
-    const rpmLowCritical = rpmBase * 0.65;
-
-    const warnFlags = [
-        temp > 85,
-        vib > 3,
-        current > 18,
-        rpm > rpmHighWarn || rpm < rpmLowWarn
-    ];
-
-    const criticalFlags = [
-        temp > 100,
-        vib > 5,
-        current > 22,
-        rpm > rpmHighCritical || rpm < rpmLowCritical
-    ];
-
-    const warnCount = warnFlags.filter(Boolean).length;
-    const criticalCount = criticalFlags.filter(Boolean).length;
-
-    // Keep z-score signal as a secondary boost, not the primary trigger.
-    const zTemp = computeLatestZScore(mId, 'temperature_C');
-    const zVib = computeLatestZScore(mId, 'vibration_mm_s');
-    const zCurrent = computeLatestZScore(mId, 'current_A');
-    const zMax = Math.max(zTemp, zVib, zCurrent);
-
-    let risk = 0.1;
-    if (warnCount >= 1) risk = 0.45;
-    if (warnCount >= 2) risk = 0.62;
-    if (criticalCount >= 1) risk = 0.82;
-    if (criticalCount >= 2) risk = 0.92;
-
-    if (zMax >= 3.2 && risk < 0.82) {
-        risk = 0.72;
-    } else if (zMax >= 2.2 && risk < 0.62) {
-        risk = 0.58;
-    }
-
-    return Number.isFinite(risk) ? Math.min(1, Math.max(0, risk)) : 0;
+    const status = machineData[mId]?.status || fallbackStatusFromMetrics(mId, machineData[mId]?.metrics || {});
+    return getRiskFromStatus(status);
 }
 
 function addAlert(machineId, title, message) {
@@ -307,6 +332,13 @@ function setupEventListeners() {
         btn.addEventListener('click', () => {
             const viewId = btn.dataset.view;
             if (viewId) switchView(viewId);
+        });
+    });
+
+    document.querySelectorAll('[data-action="generate-report"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setReportStatus('GENERATING_REPORT...');
+            generatePdfReport();
         });
     });
 
@@ -372,6 +404,161 @@ function setupEventListeners() {
 
     const historyExportPdfBtn = document.getElementById('history-export-pdf-btn');
     if (historyExportPdfBtn) historyExportPdfBtn.addEventListener('click', () => exportHistory('pdf'));
+
+    const historyExportBtn = document.getElementById('history-export-btn');
+    if (historyExportBtn) historyExportBtn.addEventListener('click', () => {
+        const formatSelect = document.getElementById('history-export-format');
+        const format = formatSelect && formatSelect.value ? formatSelect.value : 'csv';
+        exportHistory(format);
+    });
+}
+
+function setReportStatus(message, tone = 'neutral') {
+    const status = document.getElementById('report-status');
+    if (!status) return;
+
+    status.innerText = message;
+    status.className = 'text-[10px] font-mono tracking-wider uppercase';
+    if (tone === 'ok') status.classList.add('text-primary-container');
+    else if (tone === 'error') status.classList.add('text-secondary');
+    else status.classList.add('text-outline');
+}
+
+function getActiveMachineForReport() {
+    if (selectedMachine && machineData[selectedMachine]) return selectedMachine;
+    return machines[0];
+}
+
+function getSeverityLabel(risk) {
+    if (risk >= CRITICAL_THRESHOLD) return 'CRITICAL';
+    if (risk >= WARNING_THRESHOLD) return 'WARNING';
+    return 'OPERATIONAL';
+}
+
+function generatePdfReport() {
+    const jsPdfCtor = window.jspdf && window.jspdf.jsPDF;
+    if (!jsPdfCtor) {
+        setReportStatus('PDF_ENGINE_UNAVAILABLE', 'error');
+        return;
+    }
+
+    const reportKindEl = document.getElementById('report-kind');
+    const reportKind = reportKindEl ? reportKindEl.value : 'summary';
+    const machineId = getActiveMachineForReport();
+    const machine = machineData[machineId];
+    if (!machine) {
+        setReportStatus('NO_MACHINE_DATA', 'error');
+        return;
+    }
+
+    const now = new Date();
+    const risk = machine.risk || 0;
+    const severity = getSeverityLabel(risk);
+    const baseline = baseValues[machineId] || baseValues[machines[0]];
+    const recentAlerts = alerts.slice(0, 5);
+    const history = machineHistory[machineId] || { temp: [], vib: [], rpm: [], load: [] };
+    const reportId = `RPT-${now.getTime().toString(36).toUpperCase()}`;
+
+    const doc = new jsPdfCtor({ unit: 'pt', format: 'a4' });
+    const left = 52;
+    let y = 52;
+
+    const writeLine = (label, value) => {
+        doc.setFont('courier', 'bold');
+        doc.setTextColor(90, 90, 90);
+        doc.text(label, left, y);
+        doc.setFont('courier', 'normal');
+        doc.setTextColor(20, 20, 20);
+        doc.text(String(value), left + 190, y);
+        y += 20;
+    };
+
+    doc.setFillColor(19, 19, 19);
+    doc.rect(0, 0, 595, 86, 'F');
+    doc.setTextColor(255, 215, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(24);
+    doc.text('SENTINEL 4 // TACTICAL REPORT', left, 45);
+    doc.setFontSize(11);
+    doc.text(`TYPE: ${reportKind.toUpperCase()}`, left, 68);
+
+    y = 118;
+    doc.setFontSize(12);
+    writeLine('REPORT_ID', reportId);
+    writeLine('GENERATED_AT_UTC', now.toISOString());
+    writeLine('MACHINE_ID', machineId);
+    writeLine('SEVERITY', severity);
+    writeLine('RISK_SCORE', risk.toFixed(2));
+
+    y += 10;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(left, y, 540, y);
+    y += 24;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(35, 35, 35);
+    doc.text('TELEMETRY SNAPSHOT', left, y);
+    y += 22;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(25, 25, 25);
+
+    writeLine('TEMPERATURE_C', `${machine.metrics.temperature_C?.toFixed(2)}  (baseline ${baseline.temperature_C?.toFixed(2)})`);
+    writeLine('VIBRATION_MM_S', `${machine.metrics.vibration_mm_s?.toFixed(2)}  (baseline ${baseline.vibration_mm_s?.toFixed(2)})`);
+    writeLine('RPM', `${machine.metrics.rpm?.toFixed(0)}  (baseline ${baseline.rpm?.toFixed(0)})`);
+    writeLine('CURRENT_A', `${machine.metrics.current_A?.toFixed(2)}  (baseline ${baseline.current_A?.toFixed(2)})`);
+
+    y += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text('RECENT ALERTS', left, y);
+    y += 20;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(10);
+
+    if (!recentAlerts.length) {
+        doc.text('NO ALERTS IN CURRENT WINDOW', left, y);
+        y += 16;
+    } else {
+        recentAlerts.forEach((alert, idx) => {
+            const line = `${idx + 1}. ${alert.timestamp || '--'} | ${alert.machineId || '--'} | ${alert.title || 'EVENT'} | ${alert.message || ''}`;
+            const wrapped = doc.splitTextToSize(line, 480);
+            doc.text(wrapped, left, y);
+            y += wrapped.length * 13 + 4;
+        });
+    }
+
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text('TREND DIGEST (LAST WINDOW)', left, y);
+    y += 20;
+    doc.setFont('courier', 'normal');
+
+    const safeMean = (arr) => arr && arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+    writeLine('AVG_TEMP_C', safeMean(history.temp).toFixed(2));
+    writeLine('AVG_VIB_MM_S', safeMean(history.vib).toFixed(2));
+    writeLine('AVG_RPM', safeMean(history.rpm).toFixed(0));
+    writeLine('AVG_CURRENT_A', safeMean(history.load).toFixed(2));
+
+    y += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.text('RECOMMENDED ACTION', left, y);
+    y += 18;
+    doc.setFont('courier', 'normal');
+    const recommendation = risk >= 0.8
+        ? 'Immediate inspection and controlled shutdown prep. Escalate to maintenance lead.'
+        : (risk >= 0.6
+            ? 'Schedule maintenance window and increase monitor frequency for this unit.'
+            : 'Continue nominal monitoring cadence.');
+    const recLines = doc.splitTextToSize(recommendation, 480);
+    doc.text(recLines, left, y);
+
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text('AUTO-GENERATED BY SENTINEL 4 FRONTEND REPORT GENERATOR', left, 810);
+
+    const stamp = now.toISOString().replace(/[:.]/g, '-');
+    doc.save(`SENTINEL4_${reportKind.toUpperCase()}_${machineId}_${stamp}.pdf`);
+    setReportStatus('REPORT_EXPORTED', 'ok');
 }
 
 function getSelectedDispatchMachine() {
@@ -477,7 +664,8 @@ function startLocalSimulation() {
                 temperature_C: mData.temperature_C,
                 vibration_mm_s: mData.vibration_mm_s,
                 rpm: mData.rpm,
-                current_A: mData.current_A
+                current_A: mData.current_A,
+                status: fallbackStatusFromMetrics(m, mData)
             });
         });
     }, 3000);
@@ -507,38 +695,46 @@ function getStatusLabelFromRisk(risk, isMaintenance = false) {
     if (isMaintenance) return 'MAINTENANCE';
     if (risk > CRITICAL_THRESHOLD) return 'CRITICAL';
     if (risk >= WARNING_THRESHOLD) return 'WARNING';
-    return 'STABLE';
+    return 'OPERATIONAL';
 }
 
 function getStatusRuleReasons(machineId) {
-    const metrics = machineData[machineId]?.metrics || {};
-    const base = baseValues[machineId] || {};
+    const machine = machineData[machineId] || {};
+    const metrics = machine.metrics || {};
+    const rawStatus = machine.rawStatus || '';
     const reasons = [];
+
+    if (rawStatus) {
+        reasons.push(machine.statusRule || `STREAM_STATUS=${String(rawStatus).toUpperCase()}`);
+        return reasons;
+    }
 
     const temp = Number(metrics.temperature_C || 0);
     const vib = Number(metrics.vibration_mm_s || 0);
     const rpm = Number(metrics.rpm || 0);
-    const current = Number(metrics.current_A || 0);
 
-    const rpmBase = Number(base.rpm || 1);
-    const rpmHighWarn = rpmBase * 1.2;
-    const rpmHighCritical = rpmBase * 1.35;
-    const rpmLowWarn = rpmBase * 0.8;
-    const rpmLowCritical = rpmBase * 0.65;
+    if (machineId === 'CNC_01') {
+        if (vib > 5.5) reasons.push('VIB CRIT>5.5');
+        else if (vib > 3.5) reasons.push('VIB WARN>3.5');
+    }
 
-    if (temp > 100) reasons.push(`TEMP CRIT>${100}`);
-    else if (temp > 85) reasons.push(`TEMP WARN>${85}`);
+    if (machineId === 'CNC_02') {
+        if (temp > 110) reasons.push('TEMP CRIT>110');
+        else if (temp > 95) reasons.push('TEMP WARN>95');
+    }
 
-    if (vib > 5) reasons.push(`VIB CRIT>${5}`);
-    else if (vib > 3) reasons.push(`VIB WARN>${3}`);
+    if (machineId === 'PUMP_03') {
+        if (vib > 5) reasons.push('VIB WARN>5');
+        if (rpm < 2800) reasons.push('RPM WARN<2800');
+    }
 
-    if (current > 22) reasons.push(`LOAD CRIT>${22}`);
-    else if (current > 18) reasons.push(`LOAD WARN>${18}`);
+    if (machineId === 'CONVEYOR_04' && vib > 1.5) {
+        reasons.push('VIB WARN>1.5');
+    }
 
-    if (rpm > rpmHighCritical) reasons.push(`RPM CRIT>${rpmHighCritical.toFixed(0)}`);
-    else if (rpm < rpmLowCritical) reasons.push(`RPM CRIT<${rpmLowCritical.toFixed(0)}`);
-    else if (rpm > rpmHighWarn) reasons.push(`RPM WARN>${rpmHighWarn.toFixed(0)}`);
-    else if (rpm < rpmLowWarn) reasons.push(`RPM WARN<${rpmLowWarn.toFixed(0)}`);
+    if (!reasons.length) {
+        reasons.push(`FALLBACK_RULE=${fallbackStatusFromMetrics(machineId, metrics)}`);
+    }
 
     return reasons;
 }
@@ -550,16 +746,20 @@ function getMachineSnapshot(machineId) {
             machineId,
             risk: 0,
             status: 'UNKNOWN',
+            rawStatus: '',
             isMaintenance: false,
             lastUpdated: '',
             metrics: {}
         };
     }
 
+    const status = data.status || fallbackStatusFromMetrics(machineId, data.metrics || {});
+
     return {
         machineId,
-        risk: Number(data.risk || 0),
-        status: getStatusLabelFromRisk(Number(data.risk || 0), Boolean(data.isMaintenance)),
+        risk: Number(data.risk || getRiskFromStatus(status) || 0),
+        status: data.isMaintenance ? 'MAINTENANCE' : status,
+        rawStatus: data.rawStatus || '',
         isMaintenance: Boolean(data.isMaintenance),
         lastUpdated: data.lastUpdated ? new Date(data.lastUpdated).toLocaleString() : '',
         metrics: {
@@ -599,7 +799,7 @@ function renderHistoryMinuteTable() {
     tbody.innerHTML = '';
 
     historySidebarState.records.forEach((record) => {
-        const status = record.status || getStatusLabelFromRisk(Number(record.risk || 0));
+        const status = normalizeSourceStatus(record.status) || getStatusLabelFromRisk(Number(record.risk || 0));
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-surface-container-high transition-colors cursor-pointer';
         tr.innerHTML = `
@@ -658,7 +858,7 @@ function renderHistoryDetails() {
     }
 
     const payload = selected.payload || {};
-    const status = selected.status || getStatusLabelFromRisk(Number(selected.risk || 0));
+    const status = normalizeSourceStatus(selected.status) || getStatusLabelFromRisk(Number(selected.risk || 0));
     const minuteStart = selected.minute_start || selected.timestamp;
     const minuteEnd = selected.minute_end || selected.timestamp;
     detail.innerHTML = `
@@ -667,6 +867,7 @@ function renderHistoryDetails() {
         <div><span class="text-outline">Event Type:</span> <span class="text-on-surface">${selected.event_type || 'minute_summary'}</span></div>
         <div><span class="text-outline">Machine:</span> <span class="text-on-surface">${selected.machine_id}</span></div>
         <div><span class="text-outline">Status:</span> <span class="text-on-surface">${status}</span></div>
+        <div><span class="text-outline">Status Rule:</span> <span class="text-on-surface">${selected.status_rule || payload.status_rule || payload.status || 'RISK_DERIVED'}</span></div>
         <div><span class="text-outline">Minute Window:</span> <span class="text-on-surface">${getHistoryDateLabel(minuteStart)} -> ${getHistoryDateLabel(minuteEnd)}</span></div>
         <div><span class="text-outline">Message:</span> <span class="text-on-surface">${selected.message || '1-minute machine summary'}</span></div>
         <div><span class="text-outline">Sample Count:</span> <span class="text-on-surface">${Number(selected.sample_count || 0)}</span></div>
@@ -744,7 +945,7 @@ function renderHistorySidebar() {
 
         const risk = Number(record.risk || 0);
         const riskClass = risk >= CRITICAL_THRESHOLD ? 'text-error' : (risk >= WARNING_THRESHOLD ? 'text-primary-container' : 'text-on-surface');
-        const status = record.status || getStatusLabelFromRisk(risk);
+        const status = normalizeSourceStatus(record.status) || getStatusLabelFromRisk(risk);
         const eventType = String(record.event_type || 'minute_summary').toUpperCase();
         const message = record.message || '1-minute machine summary';
 
@@ -846,7 +1047,9 @@ async function saveCurrentMachineSnapshot() {
         rpm: Number(machine.metrics.rpm || 0),
         current: Number(machine.metrics.current_A || 0),
         risk: Number(machine.risk || 0),
-        status: getStatusLabelFromRisk(Number(machine.risk || 0), Boolean(machine.isMaintenance))
+        status: machine.status || getStatusLabelFromRisk(Number(machine.risk || 0), Boolean(machine.isMaintenance)),
+        status_rule: machine.statusRule || 'RISK_DERIVED',
+        raw_status: machine.rawStatus || ''
     };
 
     try {
@@ -1302,7 +1505,7 @@ function updateAnalysisCharts(summary, records) {
     });
     analysisCharts.zscoreBar.data.labels = machines;
     analysisCharts.zscoreBar.data.datasets[0].data = zScoresByMachine;
-    analysisCharts.zscoreBar.data.datasets[0].backgroundColor = machines.map((mId) => (mId === focusMachine ? '#ff4c4c' : '#ffd700'));
+    analysisCharts.zscoreBar.data.datasets[0].backgroundColor = machines.map(() => '#ffd700');
     analysisCharts.zscoreBar.update('none');
 
     const latest = getLatestRecord(series);

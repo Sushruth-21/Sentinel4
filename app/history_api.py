@@ -4,6 +4,7 @@ from typing import Optional
 from aiohttp import web
 
 from .database import TelemetryRepository
+from .status_utils import normalize_status_label
 
 
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -115,6 +116,7 @@ def build_history_app(repo: TelemetryRepository) -> web.Application:
             "rpm": payload.get("rpm"),
             "current": payload.get("current"),
             "source": "manual_snapshot",
+            "status": payload.get("status"),
         }
         risk = float(payload.get("risk") or 0.0)
 
@@ -123,7 +125,7 @@ def build_history_app(repo: TelemetryRepository) -> web.Application:
             repo.log_event(
                 machine_id=machine_id,
                 event_type="manual_snapshot",
-                status=str(payload.get("status") or "OPERATIONAL"),
+                status=normalize_status_label(payload.get("status")) or "OPERATIONAL",
                 severity="info",
                 message="Manual snapshot saved from history sidebar",
                 timestamp=event["timestamp"],
@@ -133,6 +135,7 @@ def build_history_app(repo: TelemetryRepository) -> web.Application:
                     "rpm": event["rpm"],
                     "current": event["current"],
                     "risk": risk,
+                    "status": normalize_status_label(payload.get("status")) or "OPERATIONAL",
                 },
             )
         except Exception as exc:

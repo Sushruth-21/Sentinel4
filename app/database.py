@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 from sqlalchemy import DateTime, Float, Integer, String, Text, create_engine, delete, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from .status_utils import normalize_status_label, risk_from_status, status_rank
+
 
 class Base(DeclarativeBase):
     pass
@@ -153,8 +155,8 @@ class TelemetryRepository:
                 "record_type": "telemetry",
                 "timestamp": row["timestamp"],
                 "machine_id": row["machine_id"],
-                "status": self._status_from_risk(float(row.get("risk") or 0.0)),
-                "severity": "critical" if float(row.get("risk") or 0.0) >= 0.8 else ("warning" if float(row.get("risk") or 0.0) >= 0.6 else "normal"),
+                "status": normalize_status_label(row.get("status")) or self._status_from_risk(float(row.get("risk") or 0.0)),
+                "severity": "critical" if normalize_status_label(row.get("status")) == "CRITICAL" or float(row.get("risk") or 0.0) >= 0.8 else ("warning" if normalize_status_label(row.get("status")) == "WARNING" or float(row.get("risk") or 0.0) >= 0.6 else "normal"),
                 "event_type": "telemetry",
                 "message": "Telemetry sample captured",
                 "temperature": row.get("temperature"),
@@ -162,6 +164,7 @@ class TelemetryRepository:
                 "rpm": row.get("rpm"),
                 "current": row.get("current"),
                 "risk": row.get("risk"),
+                "status_rule": row.get("status_rule") or "RISK_DERIVED",
                 "payload": row.get("payload") or {},
             }
             for row in telemetry_rows
@@ -204,6 +207,9 @@ class TelemetryRepository:
             parsed_ts = self._parse_timestamp(raw_ts)
             minute_ts = parsed_ts.replace(second=0, microsecond=0)
             minute_key = minute_ts.isoformat()
+            payload = row.get("payload") or {}
+            raw_status = payload.get("status") or row.get("status")
+            normalized_status = normalize_status_label(raw_status)
 
             bucket = minute_buckets.get(minute_key)
             if bucket is None:
@@ -217,6 +223,7 @@ class TelemetryRepository:
                     "machine_id": machine_id,
                     "status": "OPERATIONAL",
                     "severity": "normal",
+                    "status_rule": "RISK_DERIVED",
                     "message": "1-minute machine summary",
                     "temperature": 0.0,
                     "vibration": 0.0,
@@ -235,6 +242,7 @@ class TelemetryRepository:
                     "risk_max": float("-inf"),
                     "sample_count": 0,
                     "payload": {},
+                    "_status_rank": -1,
                     "_last_sample_ts": "",
                 }
                 minute_buckets[minute_key] = bucket
@@ -265,6 +273,8 @@ class TelemetryRepository:
                 bucket["rpm"] = rpm
                 bucket["current"] = current
                 bucket["risk"] = risk
+                if normalized_status:
+                    bucket["payload"] = payload
 
         # Apply status events inside each minute window if available.
         with self.session_factory() as session:
@@ -281,8 +291,13 @@ class TelemetryRepository:
             bucket = minute_buckets.get(minute_key)
             if not bucket:
                 continue
-            bucket["status"] = event_row.status or bucket["status"]
-            bucket["severity"] = event_row.severity or bucket["severity"]
+            event_status = normalize_status_label(event_row.status)
+            event_rank = status_rank(event_status)
+            if event_rank >= bucket.get("_status_rank", -1):
+                bucket["status"] = event_status or bucket["status"]
+                bucket["severity"] = event_row.severity or bucket["severity"]
+                bucket["status_rule"] = f"STREAM_STATUS={str(event_row.status or '').upper()}"
+                bucket["_status_rank"] = event_rank
             bucket["message"] = event_row.message or bucket["message"]
             bucket["payload"] = {
                 "event_type": event_row.event_type,
@@ -296,10 +311,11 @@ class TelemetryRepository:
             if bucket["sample_count"] <= 0:
                 continue
 
-            # If no explicit event status was present for that minute, derive from max risk.
             if bucket["status"] in ("", "OPERATIONAL"):
-                bucket["status"] = self._status_from_risk(float(bucket["risk_max"]))
-                bucket["severity"] = "critical" if bucket["risk_max"] >= 0.8 else ("warning" if bucket["risk_max"] >= 0.6 else "normal")
+                bucket["status"] = normalize_status_label(bucket["payload"].get("status")) or self._status_from_risk(float(bucket["risk_max"]))
+                bucket["severity"] = "critical" if bucket["status"] == "CRITICAL" or bucket["risk_max"] >= 0.8 else ("warning" if bucket["status"] == "WARNING" or bucket["risk_max"] >= 0.6 else "normal")
+                if bucket["status_rule"] == "RISK_DERIVED" and bucket["payload"].get("status"):
+                    bucket["status_rule"] = f"STREAM_STATUS={str(bucket['payload'].get('status')).upper()}"
 
             # Replace sentinel values in case of sparse data.
             for key in [
@@ -313,6 +329,7 @@ class TelemetryRepository:
                     bucket[key] = 0.0
 
             bucket.pop("_last_sample_ts", None)
+            bucket.pop("_status_rank", None)
             summaries.append(bucket)
 
         summaries.sort(key=lambda r: r.get("minute_start", ""), reverse=(sort_direction != "asc"))
@@ -430,6 +447,8 @@ class TelemetryRepository:
             "rpm": row.rpm,
             "current": row.current,
             "risk": row.risk,
+            "status": normalize_status_label(payload.get("status")),
+            "status_rule": f"STREAM_STATUS={str(payload.get('status') or '').upper()}" if payload.get("status") else "RISK_DERIVED",
             "payload": payload,
         }
 
