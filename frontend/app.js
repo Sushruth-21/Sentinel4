@@ -108,6 +108,14 @@ function updateMachineData(mId, reading) {
     }
 }
 
+function calculateClientRisk(mId) {
+    const metrics = machineData[mId].metrics;
+    const base = baseValues[mId];
+    let risk = 0.1;
+    
+    if (metrics.temperature_C > base.temperature_C * 1.2) risk += 0.4;
+    if (metrics.vibration_mm_s > base.vibration_mm_s * 2.0) risk += 0.4;
+
     const prevRisk = machineData[mId].risk;
     machineData[mId].risk = Math.min(1.0, risk);
 
