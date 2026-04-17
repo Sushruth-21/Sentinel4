@@ -19,7 +19,7 @@ let activeView = 'dashboard';
 let selectedMachine = null;
 let eventSources = {};
 let machineHistory = {};
-let forensicChart = null;
+let forensicCharts = {}; // Changed from singular forensicChart
 const MAX_HISTORY = 50;
 const sensorMap = [
     { key: 'temperature_C', fn: getTempClass, label: 'TEMP' },
@@ -343,49 +343,65 @@ function renderDiagnostics() {
         narrative.innerHTML = `Machine ${mId} is operating within nominal parameters. <br/><br/> Recommendation: Routine maintenance cycle maintained.`;
     }
 
-    if (!forensicChart) initForensicChart();
+    if (Object.keys(forensicCharts).length === 0) initForensicCharts();
 }
 
-function initForensicChart() {
-    const ctx = document.getElementById('forensicChart').getContext('2d');
-    const commonOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        elements: { point: { radius: 0 }, line: { tension: 0.1, borderWidth: 2 } },
-        scales: {
-            x: { ticks: { display: false }, grid: { color: '#4d473233' } },
-            y: { ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#999077' }, grid: { color: '#4d473233' } }
-        },
-        plugins: { legend: { display: false } }
-    };
-
-    forensicChart = new Chart(ctx, {
+function initForensicCharts() {
+    const config = (color, label) => ({
         type: 'line',
         data: {
             labels: Array(MAX_HISTORY).fill(''),
-            datasets: [
-                { label: 'TEMP', borderColor: '#ff4c4c', data: [] },
-                { label: 'VIB', borderColor: '#ffd700', data: [] },
-                { label: 'RPM', borderColor: '#72ebff', data: [] },
-                { label: 'LOAD', borderColor: '#ffb3ae', data: [] }
-            ]
+            datasets: [{ label, borderColor: color, data: [], fill: { target: 'origin', above: color + '11' } }]
         },
-        options: commonOptions
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            elements: { point: { radius: 0 }, line: { tension: 0.2, borderWidth: 1.5 } },
+            scales: {
+                x: { display: false },
+                y: { 
+                    beginAtZero: false,
+                    ticks: { font: { family: 'JetBrains Mono', size: 8 }, color: '#999077', maxTicksLimit: 3 },
+                    grid: { color: '#4d473211' } 
+                }
+            },
+            plugins: { legend: { display: false } }
+        }
     });
+
+    forensicCharts.temp = new Chart(document.getElementById('chart-temp').getContext('2d'), config('#ff4c4c', 'TEMP'));
+    forensicCharts.vib = new Chart(document.getElementById('chart-vib').getContext('2d'), config('#ffd700', 'VIB'));
+    forensicCharts.rpm = new Chart(document.getElementById('chart-rpm').getContext('2d'), config('#72ebff', 'RPM'));
+    forensicCharts.load = new Chart(document.getElementById('chart-load').getContext('2d'), config('#ffb3ae', 'LOAD'));
 }
 
 function updateForensicChart() {
-    if (!forensicChart || !selectedMachine) return;
+    if (Object.keys(forensicCharts).length === 0 || !selectedMachine) return;
     const history = machineHistory[selectedMachine];
+    const data = machineData[selectedMachine].metrics;
     
-    forensicChart.data.labels = history.labels;
-    forensicChart.data.datasets[0].data = history.temp;
-    forensicChart.data.datasets[1].data = history.vib;
-    forensicChart.data.datasets[2].data = history.rpm;
-    forensicChart.data.datasets[3].data = history.load;
+    // Update numerical readouts
+    const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+    safeSet('val-temp', `${data.temperature_C?.toFixed(1)}°C`);
+    safeSet('val-vib', `${data.vibration_mm_s?.toFixed(2)}mm/s`);
+    safeSet('val-rpm', `${data.rpm?.toFixed(0)} RPM`);
+    safeSet('val-load', `${data.current_A?.toFixed(1)}A`);
+
+    // Update charts
+    forensicCharts.temp.data.labels = history.labels;
+    forensicCharts.temp.data.datasets[0].data = history.temp;
     
-    forensicChart.update('none');
+    forensicCharts.vib.data.labels = history.labels;
+    forensicCharts.vib.data.datasets[0].data = history.vib;
+    
+    forensicCharts.rpm.data.labels = history.labels;
+    forensicCharts.rpm.data.datasets[0].data = history.rpm;
+    
+    forensicCharts.load.data.labels = history.labels;
+    forensicCharts.load.data.datasets[0].data = history.load;
+    
+    Object.values(forensicCharts).forEach(c => c.update('none'));
 }
 
 function renderMaintenance() {

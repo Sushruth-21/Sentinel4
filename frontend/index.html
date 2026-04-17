@@ -206,21 +206,40 @@
                             Waiting for telemetry anomaly...
                         </div>
                     </div>
-                    <div class="lg:col-span-2 bg-surface-container-low p-4 border border-outline-variant/10 relative h-[400px]">
-                        <div class="flex justify-between items-center mb-4">
-                            <h4 class="font-headline font-bold text-xs uppercase text-primary-container">TELEMETRY_FORENSICS</h4>
-                            <div class="flex gap-4" id="chart-legend">
-                                <!-- Legend toggles or status info -->
+                    <div class="lg:col-span-2 bg-surface-container-low border border-outline-variant/10 relative overflow-y-auto max-h-[600px] p-4">
+                        <div class="flex justify-between items-center mb-4 sticky top-0 bg-surface-container-low z-10 pb-2 border-b border-outline-variant/5">
+                            <h4 class="font-headline font-bold text-xs uppercase text-primary-container">TELEMETRY_FORENSICS_MULTI_CHANNEL</h4>
+                        </div>
+                        
+                        <div class="space-y-6">
+                            <!-- Temp Chart -->
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-[9px] font-mono text-outline uppercase"><span>01_TEMPERATURE</span><span class="text-[#ff4c4c]" id="val-temp">--°C</span></div>
+                                <div class="h-[140px] w-full bg-surface-container-lowest/30 rounded border border-outline-variant/5">
+                                    <canvas id="chart-temp"></canvas>
+                                </div>
                             </div>
-                        </div>
-                        <div class="relative w-full h-[320px]">
-                            <canvas id="forensicChart"></canvas>
-                        </div>
-                        <div class="mt-4 flex flex-wrap gap-4 border-t border-outline-variant/10 pt-4" id="forensic-legend">
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#ff4c4c]"></span><span class="text-[9px] font-mono text-outline uppercase">Temperature</span></div>
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#ffd700]"></span><span class="text-[9px] font-mono text-outline uppercase">Vibration</span></div>
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#72ebff]"></span><span class="text-[9px] font-mono text-outline uppercase">RPM</span></div>
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#ffb3ae]"></span><span class="text-[9px] font-mono text-outline uppercase">Load (Current)</span></div>
+                            <!-- Vibration Chart -->
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-[9px] font-mono text-outline uppercase"><span>02_VIBRATION</span><span class="text-[#ffd700]" id="val-vib">--mm/s</span></div>
+                                <div class="h-[140px] w-full bg-surface-container-lowest/30 rounded border border-outline-variant/5">
+                                    <canvas id="chart-vib"></canvas>
+                                </div>
+                            </div>
+                            <!-- RPM Chart -->
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-[9px] font-mono text-outline uppercase"><span>03_SPEED_RPM</span><span class="text-[#72ebff]" id="val-rpm">--RPM</span></div>
+                                <div class="h-[140px] w-full bg-surface-container-lowest/30 rounded border border-outline-variant/5">
+                                    <canvas id="chart-rpm"></canvas>
+                                </div>
+                            </div>
+                            <!-- Load Chart -->
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-[9px] font-mono text-outline uppercase"><span>04_ELEC_LOAD</span><span class="text-[#ffb3ae]" id="val-load">--A</span></div>
+                                <div class="h-[140px] w-full bg-surface-container-lowest/30 rounded border border-outline-variant/5">
+                                    <canvas id="chart-load"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
