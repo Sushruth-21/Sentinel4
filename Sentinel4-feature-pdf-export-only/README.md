@@ -56,3 +56,9 @@ Adjust sensitivities in `config.py`:
 
 ---
 **Mission Status**: Fully Integrated & Ready for Deployment.
+
+## Feature Snapshot (2026-04-18)
+
+- This folder remains the isolated reference implementation for PDF report export.
+- Main integration has been completed in the primary dashboard branch flow.
+- Keep this package as feature-only baseline for regression comparison.

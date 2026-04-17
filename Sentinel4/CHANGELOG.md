@@ -2,6 +2,19 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
+## [1.10.0] - 2026-04-18
+
+### Added
+- PDF report generator integration in frontend mission workflow.
+- In-view History export controls for CSV, JSON, and PDF.
+
+### Changed
+- Overview value color behavior refined for out-of-range emphasis.
+- Frontend fallback update timing aligned to 1-second stream cadence.
+
+### Fixed
+- Warning badge and sensor-value color mismatch for low-baseline units.
+
 ## [1.4.1] - 2026-04-17
 
 ### Added

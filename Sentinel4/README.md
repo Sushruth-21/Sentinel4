@@ -56,3 +56,10 @@ Adjust sensitivities in `config.py`:
 
 ---
 **Mission Status**: Fully Integrated & Ready for Deployment.
+
+## Phase-3 Update (2026-04-18)
+
+- Added PDF report generation support in the dashboard layer.
+- Added History export controls for CSV, JSON, and PDF.
+- Standardized Overview out-of-range value highlighting behavior.
+- Aligned fallback update loop timing with live API stream cadence.

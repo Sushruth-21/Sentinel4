@@ -2,6 +2,12 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
+## [2.0.0] - 2026-04-18
+
+### Documentation
+- Clarified this directory's role as PDF-export-only reference package.
+- Recorded handoff status after main branch integration.
+
 ## [1.9.0] - 2026-04-17
 
 ### Added

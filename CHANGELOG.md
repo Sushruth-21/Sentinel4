@@ -2,6 +2,20 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
+## [2.0.0] - 2026-04-18
+
+### Added
+- PDF report generation flow in the dashboard UI.
+- History export controls (CSV, JSON, PDF) in the sidebar.
+- Status normalization utility integration for consistent backend/frontend status mapping.
+
+### Changed
+- Overview value highlighting now follows a stricter out-of-range visual rule.
+- Frontend fallback update interval aligned to 1-second stream cadence.
+
+### Fixed
+- Machine warning-state and value-color mismatch in overview cards.
+
 ## [1.9.0] - 2026-04-17
 
 ### Added

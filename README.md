@@ -83,3 +83,11 @@ History API (started automatically with `python main.py`):
 
 ---
 **Mission Status**: Fully Integrated & Ready for Deployment.
+
+## Phase-3 Update (2026-04-18)
+
+- Added PDF report generation support in the main dashboard workflow.
+- Added History view export options for CSV, JSON, and PDF.
+- Normalized Overview visual thresholds so out-of-range values are highlighted consistently.
+- Synced frontend fallback simulation refresh timing with the 1-second API stream cadence.
+- Extended status normalization and telemetry persistence integration for stable API/history behavior.

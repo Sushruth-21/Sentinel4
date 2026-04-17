@@ -226,3 +226,10 @@ malendau-hackathon-server/
 ---
 
 Good luck! 🚀
+
+---
+
+## Integration Note (2026-04-18)
+
+- Sentinel dashboards consuming this API are expected to update at the same 1-second cadence as SSE events.
+- UI warning/critical presentation should be derived from the same threshold family used for sensor-value emphasis.
