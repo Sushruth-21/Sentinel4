@@ -1,0 +1,9 @@
+{
+  "name": "sentinel4-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SENTINEL 4 frontend static host",
+  "scripts": {
+    "start": "node start.js"
+  }
+}

@@ -1,0 +1,235 @@
+/* Sentinel 4 - Master Aesthetics */
+
+:root {
+    --primary: #FFD700;
+    --secondary: #ffb3ae;
+    --error: #FF4C4C;
+    --background: #0a0a0a;
+    --surface: #131313;
+    --outline: #4D4732;
+}
+
+body {
+    background-color: var(--background);
+    color: #e5e2e1;
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Blueprint & Industrial FX */
+.blueprint-grid {
+    background-image: linear-gradient(#4d473215 1px, transparent 1px), 
+                      linear-gradient(90deg, #4d473215 1px, transparent 1px);
+    background-size: 32px 32px;
+}
+
+.scanline {
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 100% 8px;
+    animation: scan 10s linear infinite;
+}
+
+@keyframes scan {
+    from { background-position: 0 0; }
+    to { background-position: 0 100%; }
+}
+
+/* Navigation State */
+.nav-btn {
+    border-radius: 0;
+    color: #999077;
+    opacity: 0.6;
+    border-left: 2px solid transparent;
+}
+
+.nav-btn:hover {
+    color: var(--primary);
+    opacity: 1;
+    background: rgba(42, 42, 42, 0.5);
+}
+
+.nav-btn.active {
+    color: var(--primary);
+    opacity: 1;
+    background: #2a2a2a;
+    border-left-color: var(--primary);
+}
+
+/* Glassmorphism & Cards */
+.card-glass {
+    background: rgba(32, 31, 31, 0.4);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(77, 71, 50, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2a2a2a;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+}
+
+/* View Transitions */
+.content-view {
+    animation: fadeIn 0.4s ease-out;
+}
+
+.sidebar-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.analysis-sidebar-scroll {
+    max-height: calc(100vh - 10rem);
+}
+
+@media (min-width: 768px) {
+    .sidebar-scroll {
+        max-height: calc(100vh - 5.5rem);
+    }
+}
+
+.dashboard-scroll {
+    max-height: calc(100vh - 8.5rem);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.diagnostics-scroll,
+.maintenance-scroll,
+.analysis-scroll {
+    max-height: calc(100vh - 8.5rem);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.analysis-meter-card,
+.analysis-chart-card {
+    background: rgba(32, 31, 31, 0.72);
+    border: 1px solid rgba(77, 71, 50, 0.18);
+    padding: 1rem;
+}
+
+.analysis-meter-label,
+.analysis-chart-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #ffd700;
+    margin-bottom: 0.75rem;
+}
+
+.analysis-meter-stage {
+    position: relative;
+    min-height: 170px;
+}
+
+.analysis-meter-stage canvas,
+.analysis-chart-frame canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.analysis-meter-value {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -20%);
+    font-family: 'JetBrains Mono', monospace;
+    color: #e5e2e1;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+.analysis-chart-frame {
+    height: 240px;
+}
+
+.analysis-chart-card.wide .analysis-chart-frame,
+.analysis-chart-card.xl\:col-span-2 .analysis-chart-frame {
+    height: 260px;
+}
+
+.analysis-summary-highlight {
+    color: var(--primary);
+}
+
+.history-list {
+    max-height: 300px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.history-row {
+    border: 1px solid rgba(77, 71, 50, 0.22);
+    background: rgba(32, 31, 31, 0.55);
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+}
+
+.history-row:hover {
+    background: rgba(42, 42, 42, 0.8);
+    border-color: rgba(255, 215, 0, 0.35);
+}
+
+.history-row.active {
+    border-color: rgba(255, 215, 0, 0.8);
+    box-shadow: inset 2px 0 0 rgba(255, 215, 0, 1);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Machine Card Specifics */
+.machine-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.machine-card:hover {
+    transform: translateY(-2px);
+    background: #2a2a2a;
+}
+
+/* Status Pulsars */
+.status-pulsar {
+    box-shadow: 0 0 0 rgba(76, 76, 76, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 76, 76, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 76, 76, 0); }
+}
+
+/* HUD Brackets from Maintenance screen */
+.hud-bracket-tl { border-top: 2px solid var(--primary); border-left: 2px solid var(--primary); width: 12px; height: 12px; position: absolute; top: -2px; left: -2px; }
+.hud-bracket-tr { border-top: 2px solid var(--primary); border-right: 2px solid var(--primary); width: 12px; height: 12px; position: absolute; top: -2px; right: -2px; }
+.hud-bracket-bl { border-bottom: 2px solid var(--primary); border-left: 2px solid var(--primary); width: 12px; height: 12px; position: absolute; bottom: -2px; left: -2px; }
+.hud-bracket-br { border-bottom: 2px solid var(--primary); border-right: 2px solid var(--primary); width: 12px; height: 12px; position: absolute; bottom: -2px; right: -2px; }

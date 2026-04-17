@@ -1,0 +1,9 @@
+venv/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+stitch_sentinel_4_industrial_ai_monitoring/
+stitch_sentinel_4_industrial_ai_monitoring.zip
+frontend/stitch_sentinel_4_industrial_ai_monitoring/
+frontend/*.zip
