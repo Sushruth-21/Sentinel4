@@ -18,6 +18,15 @@ let alerts = [];
 let activeView = 'dashboard';
 let selectedMachine = null;
 let eventSources = {};
+let machineHistory = {};
+let forensicChart = null;
+const MAX_HISTORY = 50;
+const machineLocations = {
+    'CNC_01': 7,    // Sec_B, Lvl_2
+    'CNC_02': 14,   // Sec_C, Lvl_3
+    'PUMP_03': 22,  // Sec_D, Lvl_5
+    'CONVEYOR_04': 29 // Sec_E, Lvl_6
+};
 
 // Initialization
 function init() {
@@ -27,6 +36,14 @@ function init() {
             metrics: { ...baseValues[m] },
             risk: 0.15,
             lastUpdated: new Date()
+        };
+        // Initialize history buffer
+        machineHistory[m] = {
+            labels: Array(MAX_HISTORY).fill(''),
+            temp: Array(MAX_HISTORY).fill(baseValues[m].temperature_C),
+            vib: Array(MAX_HISTORY).fill(baseValues[m].vibration_mm_s),
+            rpm: Array(MAX_HISTORY).fill(baseValues[m].rpm),
+            load: Array(MAX_HISTORY).fill(baseValues[m].current_A)
         };
     });
 
@@ -64,13 +81,30 @@ function updateMachineData(mId, reading) {
     
     machineData[mId].metrics = { ...reading };
     machineData[mId].lastUpdated = new Date(reading.timestamp);
+
+    // Update history buffer
+    const history = machineHistory[mId];
+    history.labels.push(new Date(reading.timestamp).toLocaleTimeString());
+    history.temp.push(reading.temperature_C);
+    history.vib.push(reading.vibration_mm_s);
+    history.rpm.push(reading.rpm);
+    history.load.push(reading.current_A);
+
+    if (history.labels.length > MAX_HISTORY) {
+        history.labels.shift();
+        history.temp.shift();
+        history.vib.shift();
+        history.rpm.shift();
+        history.load.shift();
+    }
     
     // In a live environment, the risk would come from the backend.
-    // Here we do a simple client-side heuristic for visual feedback.
     calculateClientRisk(mId);
     
-    if (activeView === 'dashboard' || (activeView === 'diagnostics' && selectedMachine === mId)) {
-        renderAll();
+    if (activeView === 'dashboard') renderDashboard();
+    if (activeView === 'diagnostics' && selectedMachine === mId) {
+        renderDiagnostics();
+        updateForensicChart();
     }
 }
 
@@ -114,7 +148,16 @@ function startLocalSimulation() {
                 const noise = (Math.random() - 0.5) * (baseValues[m][s] * 0.05);
                 machineData[m].metrics[s] = Math.max(0, machineData[m].metrics[s] + noise);
             });
-            renderAll();
+            // Fake history for local sim
+            const mData = machineData[m].metrics;
+            updateMachineData(m, {
+                timestamp: new Date().toISOString(),
+                machine_id: m,
+                temperature_C: mData.temperature_C,
+                vibration_mm_s: mData.vibration_mm_s,
+                rpm: mData.rpm,
+                current_A: mData.current_A
+            });
         });
     }, 3000);
 }
@@ -200,10 +243,27 @@ function renderHeatmap() {
     const heatmap = document.getElementById('heatmap-grid');
     if (!heatmap) return;
     heatmap.innerHTML = '';
+    
     for (let i = 0; i < 36; i++) {
         const cell = document.createElement('div');
-        const intensity = Math.random();
-        cell.className = intensity > 0.9 ? 'bg-error animate-pulse' : (intensity > 0.7 ? 'bg-secondary/40' : 'bg-surface-container-high');
+        cell.className = 'transition-all duration-500 border border-outline-variant/5';
+        
+        // Find if a machine is at this location
+        const machineId = Object.keys(machineLocations).find(k => machineLocations[k] === i);
+        
+        if (machineId) {
+            const risk = machineData[machineId].risk;
+            const color = risk >= 0.8 ? 'bg-error' : (risk >= 0.6 ? 'bg-secondary' : 'bg-primary-container/40');
+            cell.className += ` ${color} cursor-help relative scale-105 z-10`;
+            if (risk >= 0.8) cell.className += ' animate-pulse shadow-[0_0_15px_rgba(255,76,76,0.5)]';
+            
+            cell.title = `${machineId} | Risk: ${(risk*100).toFixed(0)}%`;
+            cell.onclick = (e) => { e.stopPropagation(); selectedMachine = machineId; switchView('diagnostics'); };
+        } else {
+            const intensity = Math.random();
+            cell.className += intensity > 0.95 ? ' bg-white/5' : ' bg-surface-container-high/40';
+        }
+        
         heatmap.appendChild(cell);
     }
 }
@@ -229,11 +289,49 @@ function renderDiagnostics() {
         narrative.innerHTML = `Machine ${mId} is operating within nominal parameters. <br/><br/> Recommendation: Routine maintenance cycle maintained.`;
     }
 
-    const points = generateGraphPoints(data.risk * 2);
-    document.getElementById('diag-pulse-line').setAttribute('points', points.split(' ').map((p, i) => {
-        if (!p) return '';
-        const [x, y] = p.split(','); return `${i*50},${y}`;
-    }).join(' '));
+    if (!forensicChart) initForensicChart();
+}
+
+function initForensicChart() {
+    const ctx = document.getElementById('forensicChart').getContext('2d');
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        elements: { point: { radius: 0 }, line: { tension: 0.1, borderWidth: 2 } },
+        scales: {
+            x: { ticks: { display: false }, grid: { color: '#4d473233' } },
+            y: { ticks: { font: { family: 'JetBrains Mono', size: 10 }, color: '#999077' }, grid: { color: '#4d473233' } }
+        },
+        plugins: { legend: { display: false } }
+    };
+
+    forensicChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Array(MAX_HISTORY).fill(''),
+            datasets: [
+                { label: 'TEMP', borderColor: '#ff4c4c', data: [] },
+                { label: 'VIB', borderColor: '#ffd700', data: [] },
+                { label: 'RPM', borderColor: '#72ebff', data: [] },
+                { label: 'LOAD', borderColor: '#ffb3ae', data: [] }
+            ]
+        },
+        options: commonOptions
+    });
+}
+
+function updateForensicChart() {
+    if (!forensicChart || !selectedMachine) return;
+    const history = machineHistory[selectedMachine];
+    
+    forensicChart.data.labels = history.labels;
+    forensicChart.data.datasets[0].data = history.temp;
+    forensicChart.data.datasets[1].data = history.vib;
+    forensicChart.data.datasets[2].data = history.rpm;
+    forensicChart.data.datasets[3].data = history.load;
+    
+    forensicChart.update('none');
 }
 
 function renderMaintenance() {

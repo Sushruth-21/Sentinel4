@@ -2,13 +2,15 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
-## [1.4.1] - 2026-04-17
+## [1.6.0] - 2026-04-17
 
 ### Added
-- **Simulation Server Integration**: Switched data ingestion from static CSV to live Node.js simulation server.
-- **Asynchronous SSE Ingestion**: Implemented multi-machine SSE stream aggregation.
-- **Automated Alert Reporter**: Added `POST /alert` hook to bridge AI diagnostics back to the simulation server.
-- **Dynamic Baseline Calibration**: Integrated simulation history API for auto-training on startup.
+- **Tactical Geographic Mapping**: Labeled the Risk Geo Mapping grid with facility sectors (Sec_A-F) and floor levels (Lvl_1-6).
+- **Physical Asset Mapping**: Tied specific hardware units to geographic coordinates on the facility floor map.
+- **Dynamic Asset Heatmap**: Implemented real-time color and pulse synchronization between the floor map and individual machine risk levels.
+- **Forensic Legend System**: Added high-contrast, color-coded legends to all telemetric forensic charts for improved readability.
+
+## [1.5.0] - 2026-04-17
 
 ### Fixed
 - **LLM Explanation Parsing**: Corrected list indexing error in `app/llm_explainer.py`.
