@@ -74,15 +74,19 @@ async def agent_loop():
         
         detector.check_silence()
         
-        # Pop highest priority alert for processing
-        alert = alert_store.pop_highest_priority()
-        if alert:
-            explanation = explain_alert(alert.machine_id, alert.risk, alert.details)
-            alert.details["explanation"] = explanation
+        # New: Process ALL pending alerts in the queue (fixes missed correlated calls)
+        while True:
+            alert = alert_store.pop_highest_priority()
+            if not alert:
+                break
+                
+            # 1. Brief explanation for the Web Dashboard
+            brief_explanation = explain_alert(alert.machine_id, alert.risk, alert.details, detailed=False)
+            alert.details["explanation"] = brief_explanation
             
             # Mission Goal: Report anomalies to simulation server
             current_time = time.time()
-            if alert.risk >= 0.75:
+            if alert.risk >= 0.4: # Match the detector threshold
                 # 1. Update alert history for this machine
                 alert_history[alert.machine_id].append(current_time)
                 # Cleanup old alerts from history (outside the window)
@@ -97,35 +101,36 @@ async def agent_loop():
                     await send_alert_to_sim_server(
                         alert.machine_id, 
                         alert.risk, 
-                        explanation, 
+                        brief_explanation, 
                         latest_values[alert.machine_id]
                     )
                     last_alert_time[alert.machine_id] = current_time
                     print(f"📢 Alert posted to server for {alert.machine_id}")
 
-                # 3. Handle Twilio Voice Call - using threshold + window + cooldowns
-                if len(alert_history[alert.machine_id]) >= VOICE_ALERT_COUNT_THRESHOLD:
+                # 3. Handle Twilio Voice Call - Trigger IMMEDIATELY on correlated anomaly (respecting cooldowns)
+                is_correlated = alert.details.get("should_call", False)
+
+                if is_correlated:
                     last_voice_call = last_voice_call_time.get(alert.machine_id, 0)
                     time_since_last_global = current_time - last_global_voice_call_time
                     
-                    # Check both per-machine cooldown AND factory-wide global cooldown
                     if (current_time - last_voice_call > VOICE_CALL_COOLDOWN_SECONDS) and \
                        (time_since_last_global > GLOBAL_VOICE_COOLDOWN_SECONDS):
                         
-                        broadcast_voice_alert(f"Emergency persistent alert for machine {alert.machine_id}. {explanation}")
+                        # Generate detailed explanation specifically for the phone call
+                        detailed_explanation = explain_alert(alert.machine_id, alert.risk, alert.details, detailed=True)
+                        
+                        broadcast_voice_alert(f"Emergency alert for machine {alert.machine_id}. {detailed_explanation}")
                         
                         last_voice_call_time[alert.machine_id] = current_time
                         last_global_voice_call_time = current_time # Update global clock
-                        print(f"📞 Voice alert triggered for {alert.machine_id} after {VOICE_ALERT_COUNT_THRESHOLD} detections.")
+                        print(f"📞 IMMEDIATE voice alert triggered for {alert.machine_id}.")
                     else:
                         print(f"🔇 Voice call suppressed by cooldown (Global: {time_since_last_global:.0f}s)")
-                    
-                    # Clear history for this machine after check to start a fresh window
-                    alert_history[alert.machine_id] = []
-            
-            # Keep history updated
-            if alert_store.history:
-                alert_store.history[-1].details["explanation"] = explanation
+                
+                # Keep history updated (for the dashboard UI)
+                if alert_store.history:
+                    alert_store.history[-1].details["explanation"] = brief_explanation
         
         render_dashboard(latest_values, latest_risks, alert_store)
 

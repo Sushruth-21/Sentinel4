@@ -20,10 +20,8 @@ SENSORS = list(SENSOR_MAP.keys())
 # Baseline + anomaly parameters
 BASELINE_WINDOW = 1000 
 DRIFT_WINDOW = 50 
-# SPIKE_Z_THRESHOLD = 5.0 # High bar for sudden spikes
-SPIKE_Z_THRESHOLD = 3.5 
-# DRIFT_Z_THRESHOLD = 3.5 # High bar for gradual drift
-DRIFT_Z_THRESHOLD = 2.0
+SPIKE_Z_THRESHOLD = 3.0 # Sensitive for warnings
+DRIFT_Z_THRESHOLD = 2.0 # Sensitive for warnings
 SILENCE_SECONDS = 60 
 
 # Groq LLM

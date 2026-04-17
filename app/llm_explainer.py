@@ -23,9 +23,8 @@ def build_prompt(machine_id: str, risk: float, details: dict) -> str:
         
     return "\n".join(lines)
 
-def explain_alert(machine_id: str, risk: float, details: dict) -> str:
+def explain_alert(machine_id: str, risk: float, details: dict, detailed: bool = False) -> str:
     if not GROQ_API_KEY:
-        # fallback if key missing
         return "Anomaly detected. Check mechanical and thermal components."
         
     headers = {
@@ -33,22 +32,37 @@ def explain_alert(machine_id: str, risk: float, details: dict) -> str:
         "Content-Type": "application/json",
     }
     
-    prompt = build_prompt(machine_id, risk, details)
-    
+    if detailed:
+        # Prompt for a detailed, expert-level explanation for the phone call
+        prompt = (
+            f"You are a senior industrial engineer. Machine {machine_id} has a risk of {risk:.2f}. "
+            f"Sensor anomalies: {details.get('sensor_z')}. Warning sensors: {details.get('warning_sensors')}. "
+            f"Correlations: {details.get('correlations')}. "
+            f"Explain in 3 clear sentences: 1) The likely physical failure, 2) The exact component to inspect, "
+            f"and 3) A warning about what happens if ignored. Speak naturally for a phone call."
+        )
+        max_tokens = 150
+        system_msg = "You provide detailed, natural-sounding industrial diagnostics."
+    else:
+        # Prompt for the existing extremely concise web dashboard alert
+        prompt = build_prompt(machine_id, risk, details)
+        max_tokens = 80
+        system_msg = "You are a concise industrial diagnostic assistant. Reply in one short sentence maximum."
+
     payload = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a concise industrial diagnostic assistant. Reply in one short sentence maximum."},
+            {"role": "system", "content": system_msg},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.1,
-        "max_tokens": 80,
+        "temperature": 0.2 if detailed else 0.1,
+        "max_tokens": max_tokens,
     }
     
     try:
-        resp = requests.post(GROQ_BASE_URL, headers=headers, json=payload, timeout=7)
+        resp = requests.post(GROQ_BASE_URL, headers=headers, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Anomaly detected. Diagnostic unavailable ({e})."
+        return f"Anomaly detected on {machine_id}. Inspection required."
