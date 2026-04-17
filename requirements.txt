@@ -1,0 +1,7 @@
+aiohttp
+asyncio
+numpy
+pandas
+rich
+requests
+python-dotenv
