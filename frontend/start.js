@@ -1,9 +1,12 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 
 const host = '127.0.0.1';
 const rootDir = __dirname;
+const historyApiHost = process.env.HISTORY_API_HOST || '127.0.0.1';
+const historyApiPort = Number(process.env.HISTORY_API_PORT || 8010);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -32,7 +35,42 @@ function safeResolvePath(urlPath) {
   return absolute;
 }
 
+function proxyHistoryApi(req, res) {
+  const incomingUrl = new URL(req.url || '/', `http://${host}`);
+  const options = {
+    hostname: historyApiHost,
+    port: historyApiPort,
+    path: incomingUrl.pathname + incomingUrl.search,
+    method: req.method,
+    headers: {
+      ...req.headers,
+      host: `${historyApiHost}:${historyApiPort}`
+    }
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      error: 'History API proxy failed',
+      target: `http://${historyApiHost}:${historyApiPort}`,
+      message: err.message
+    }));
+  });
+
+  req.pipe(proxyReq);
+}
+
 const server = http.createServer((req, res) => {
+  if ((req.url || '').startsWith('/api/history')) {
+    proxyHistoryApi(req, res);
+    return;
+  }
+
   const filePath = safeResolvePath(req.url || '/');
 
   if (!filePath) {
@@ -60,6 +98,7 @@ server.listen(0, host, () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : 0;
   console.log(`Frontend running at http://${host}:${port}`);
+  console.log(`History API proxy target: http://${historyApiHost}:${historyApiPort}`);
 });
 
 server.on('error', (err) => {

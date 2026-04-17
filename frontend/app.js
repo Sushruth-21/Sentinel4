@@ -34,7 +34,7 @@ const analysisState = {
     endTime: '',
     sortDirection: 'desc'
 };
-const HISTORY_API_URL = 'http://127.0.0.1:8010/api/history';
+const HISTORY_API_URL = '/api/history';
 const historySidebarState = {
     records: [],
     selectedRecordId: null,
@@ -183,20 +183,84 @@ function updateMachineData(mId, reading) {
 }
 
 function calculateClientRisk(mId) {
-    const metrics = machineData[mId].metrics;
-    const base = baseValues[mId];
-    let risk = 0.1;
-    
-    if (metrics.temperature_C > base.temperature_C * 1.2) risk += 0.4;
-    if (metrics.vibration_mm_s > base.vibration_mm_s * 2.0) risk += 0.4;
-
     const prevRisk = machineData[mId].risk;
-    machineData[mId].risk = Math.min(1.0, risk);
+    machineData[mId].risk = computeDynamicMachineRisk(mId);
 
     // Trigger alert if risk rises above the critical threshold
     if (machineData[mId].risk > CRITICAL_THRESHOLD && prevRisk <= CRITICAL_THRESHOLD) {
         addAlert(mId, 'Critical Anomaly Detected', `Significant deviation in ${mId} metrics. Recommendation: Immediate Inspection.`);
     }
+}
+
+function computeLatestZScore(mId, metricKey) {
+    const history = machineHistory[mId];
+    if (!history) return 0;
+
+    const metricArrayMap = {
+        temperature_C: history.temp,
+        vibration_mm_s: history.vib,
+        rpm: history.rpm,
+        current_A: history.load
+    };
+
+    const values = (metricArrayMap[metricKey] || []).map((value) => Number(value || 0));
+    if (!values.length) return 0;
+
+    const latest = values[values.length - 1];
+    return Math.abs(calculateZScore(latest, values));
+}
+
+function computeDynamicMachineRisk(mId) {
+    const metrics = machineData[mId]?.metrics || {};
+    const base = baseValues[mId] || {};
+
+    const temp = Number(metrics.temperature_C || 0);
+    const vib = Number(metrics.vibration_mm_s || 0);
+    const rpm = Number(metrics.rpm || 0);
+    const current = Number(metrics.current_A || 0);
+
+    const rpmBase = Number(base.rpm || 1);
+    const rpmHighWarn = rpmBase * 1.2;
+    const rpmHighCritical = rpmBase * 1.35;
+    const rpmLowWarn = rpmBase * 0.8;
+    const rpmLowCritical = rpmBase * 0.65;
+
+    const warnFlags = [
+        temp > 85,
+        vib > 3,
+        current > 18,
+        rpm > rpmHighWarn || rpm < rpmLowWarn
+    ];
+
+    const criticalFlags = [
+        temp > 100,
+        vib > 5,
+        current > 22,
+        rpm > rpmHighCritical || rpm < rpmLowCritical
+    ];
+
+    const warnCount = warnFlags.filter(Boolean).length;
+    const criticalCount = criticalFlags.filter(Boolean).length;
+
+    // Keep z-score signal as a secondary boost, not the primary trigger.
+    const zTemp = computeLatestZScore(mId, 'temperature_C');
+    const zVib = computeLatestZScore(mId, 'vibration_mm_s');
+    const zCurrent = computeLatestZScore(mId, 'current_A');
+    const zMax = Math.max(zTemp, zVib, zCurrent);
+
+    let risk = 0.1;
+    if (warnCount >= 1) risk = 0.45;
+    if (warnCount >= 2) risk = 0.62;
+    if (criticalCount >= 1) risk = 0.82;
+    if (criticalCount >= 2) risk = 0.92;
+
+    if (zMax >= 3.2 && risk < 0.82) {
+        risk = 0.72;
+    } else if (zMax >= 2.2 && risk < 0.62) {
+        risk = 0.58;
+    }
+
+    return Number.isFinite(risk) ? Math.min(1, Math.max(0, risk)) : 0;
 }
 
 function addAlert(machineId, title, message) {
@@ -420,6 +484,12 @@ function startLocalSimulation() {
 }
 
 function renderAll() {
+    machines.forEach((mId) => {
+        if (machineData[mId]) {
+            machineData[mId].risk = computeDynamicMachineRisk(mId);
+        }
+    });
+
     if (activeView === 'dashboard') renderDashboard();
     if (activeView === 'diagnostics') renderDiagnostics();
     if (activeView === 'maintenance') renderMaintenance();
@@ -438,6 +508,39 @@ function getStatusLabelFromRisk(risk, isMaintenance = false) {
     if (risk > CRITICAL_THRESHOLD) return 'CRITICAL';
     if (risk >= WARNING_THRESHOLD) return 'WARNING';
     return 'STABLE';
+}
+
+function getStatusRuleReasons(machineId) {
+    const metrics = machineData[machineId]?.metrics || {};
+    const base = baseValues[machineId] || {};
+    const reasons = [];
+
+    const temp = Number(metrics.temperature_C || 0);
+    const vib = Number(metrics.vibration_mm_s || 0);
+    const rpm = Number(metrics.rpm || 0);
+    const current = Number(metrics.current_A || 0);
+
+    const rpmBase = Number(base.rpm || 1);
+    const rpmHighWarn = rpmBase * 1.2;
+    const rpmHighCritical = rpmBase * 1.35;
+    const rpmLowWarn = rpmBase * 0.8;
+    const rpmLowCritical = rpmBase * 0.65;
+
+    if (temp > 100) reasons.push(`TEMP CRIT>${100}`);
+    else if (temp > 85) reasons.push(`TEMP WARN>${85}`);
+
+    if (vib > 5) reasons.push(`VIB CRIT>${5}`);
+    else if (vib > 3) reasons.push(`VIB WARN>${3}`);
+
+    if (current > 22) reasons.push(`LOAD CRIT>${22}`);
+    else if (current > 18) reasons.push(`LOAD WARN>${18}`);
+
+    if (rpm > rpmHighCritical) reasons.push(`RPM CRIT>${rpmHighCritical.toFixed(0)}`);
+    else if (rpm < rpmLowCritical) reasons.push(`RPM CRIT<${rpmLowCritical.toFixed(0)}`);
+    else if (rpm > rpmHighWarn) reasons.push(`RPM WARN>${rpmHighWarn.toFixed(0)}`);
+    else if (rpm < rpmLowWarn) reasons.push(`RPM WARN<${rpmLowWarn.toFixed(0)}`);
+
+    return reasons;
 }
 
 function getMachineSnapshot(machineId) {
@@ -1187,12 +1290,15 @@ function updateAnalysisCharts(summary, records) {
     analysisCharts.zscoreLine.data.datasets[0].backgroundColor = getMetricColor(focusMetric) + '22';
     analysisCharts.zscoreLine.update('none');
 
+    const metricToInternalKey = {
+        temperature_C: 'temperature_C',
+        vibration_mm_s: 'vibration_mm_s',
+        rpm: 'rpm',
+        current_A: 'current_A'
+    };
     const zScoresByMachine = machines.map((mId) => {
-        const machineRecords = getMachineRecords(mId);
-        const values = machineRecords.map((record) => Number(record[focusMetric] || 0));
-        const latest = getLatestRecord(machineRecords);
-        const latestValue = latest ? Number(latest[focusMetric] || 0) : 0;
-        return calculateZScore(latestValue, values);
+        const key = metricToInternalKey[focusMetric] || 'temperature_C';
+        return computeLatestZScore(mId, key);
     });
     analysisCharts.zscoreBar.data.labels = machines;
     analysisCharts.zscoreBar.data.datasets[0].data = zScoresByMachine;
@@ -1240,6 +1346,8 @@ function renderAnalysisSummary() {
     const relevantRows = analysisState.scope === 'machine' ? rows.filter((row) => row.machineId === analysisState.focusMachine) : rows;
 
     relevantRows.forEach((row) => {
+        const reasons = getStatusRuleReasons(row.machineId);
+        const statusRuleText = reasons.length ? reasons.join(' | ') : 'WITHIN_RANGE';
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-surface-container-high transition-colors';
         tr.innerHTML = `
@@ -1253,6 +1361,7 @@ function renderAnalysisSummary() {
             <td class="px-4 py-3 text-on-surface">${row.metrics.rpm.min.toFixed(2)}</td>
             <td class="px-4 py-3 text-on-surface">${row.metrics.current_A.peak.toFixed(2)}</td>
             <td class="px-4 py-3 text-on-surface">${row.metrics.current_A.min.toFixed(2)}</td>
+            <td class="px-4 py-3 text-on-surface-variant text-[10px]">${statusRuleText}</td>
             <td class="px-4 py-3 text-right text-outline font-mono text-[10px]">${row.lastSeen ? row.lastSeen.toLocaleString() : '--'}</td>
         `;
         tbody.appendChild(tr);
