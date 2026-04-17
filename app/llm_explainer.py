@@ -51,6 +51,6 @@ def explain_alert(machine_id: str, risk: float, details: dict) -> str:
         resp = requests.post(GROQ_BASE_URL, headers=headers, json=payload, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"]["message"]["content"].strip()
+        return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"Could not get explanation from LLM ({e}). Use raw sensor info to decide next steps."

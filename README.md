@@ -1,59 +1,58 @@
 # Sentinel 4 - Industrial AI Monitoring System
 
-Sentinel 4 is a high-performance industrial monitoring system designed for predictive maintenance. It combines real-time multi-sensor data ingestion with an autonomous AI agent that detects anomalies, predicts mechanical failures, and provides LLM-generated explanations for maintenance engineers.
+Sentinel 4 is a high-fidelity industrial monitoring system designed for the **Hack Malnadu 2026** competition. It transforms raw sensor data into actionable intelligence through a combination of statistical anomaly detection, predictive failure modeling, and LLM-powered diagnostics.
 
-## Key Features
+## 🚀 Key Features
 
-- **Autonomous Agent Loop**: Continuous monitoring of machine health with real-time risk assessment.
-- **Three-Tier Anomaly Detection**:
-    - **Spike Detection**: Immediate identification of sensor outliers.
-    - **Drift Detection**: Captures slow degradation patterns over time.
-    - **Compound Logic**: High-risk alerts triggered by multi-sensor instability.
-- **Predictive Diagnostics**: Forecasts potential failures before they occur, reducing downtime.
-- **AI Explanation Layer**: Powered by Groq/Llama 3.1, providing human-readable explanations and action items for every alert.
-- **Industrial Neon Noir Dashboard**: A modern, responsive web interface for control rooms and field engineers.
+- **Tactical Mission Control**: A professional-grade "Industrial Neon Noir" dashboard providing sub-second telemetry visualization.
+- **Autonomous Anomaly Brain**:
+    - **Spike Detection**: Real-time identification of sensor outliers using Z-score logic.
+    - **Drift Detection**: Captures slow mechanical degradation patterns.
+    - **Compound Analysis**: High-risk alerts triggered by multi-sensor instability.
+- **Sim-Server Integration**: Native support for the [Malendau Simulation Server](https://github.com/Jnanik-AI/malendau-hackathon) via SSE streams.
+- **AI Explanation Layer**: Powered by Groq/Llama 3.1, translating complex sensor fluctuations into maintenance recommendations.
+- **Automatic Incident Reporting**: Self-reporting alerts back to the simulation server for real-time mission feedback.
 
-## System Architecture
+## 🛠️ System Architecture
 
-### Backend Agent
-- `app/ingestion.py`: Handles data streams (CSV history or Live SSE).
-- `app/baseline.py`: Dynamically learns "normal" operating ranges for every machine.
-- `app/anomaly.py`: The detection brain implementing Z-score and rolling mean logic.
-- `app/llm_explainer.py`: Integration with Groq API for expert diagnostic advice.
+### Backend Agent (Python)
+- `main.py`: The central mission loop and alert reporter.
+- `app/ingestion.py`: Asynchronous SSE aggregation and History API synchronization.
+- `app/anomaly.py`: Statistical detection engine (Outliers + Trends).
+- `app/baseline.py`: Dynamic calibration engine that learns "normal" operating ranges.
+- `app/llm_explainer.py`: Integration with Groq for expert diagnostic advice.
 
-### Frontend Dashboard
-The frontend is a standalone responsive web application located in the `frontend/` directory.
-- `index.html`: Multi-view layout (Overview & Diagnostics).
-- `styles.css`: High-fidelity Industrial aesthetic with responsive breakpoints.
-- `app.js`: Dynamic UI updates and state management.
+### Tactical Dashboard (Frontend)
+- `index.html`: Multi-view shell (Overview, Diagnostics, Maintenance Matrix).
+- `styles.css`: Blueprint-inspired aesthetics with Glassmorphism and CRT effects.
+- `app.js`: Live data binding to simulation SSE streams.
 
-## Setup & Usage
+## 🚦 Setup & Launch
 
-### Prerequisites
-- Python 3.8+
-- Groq API Key (for LLM explanations)
+### 1. Prerequisites
+- Python 3.11+
+- [Groq API Key](https://console.groq.com/)
+- [Node.js](https://nodejs.org/) (for the simulation server)
 
-### Installation
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Configure environment:
-   Create a `.env` file or export your key:
-   ```bash
-   export GROQ_API_KEY=your_key_here
-   ```
+### 2. Launch Sequence
+1.  **Start Simulation Server**:
+    ```bash
+    cd ../malendau-hackathon
+    npm start
+    ```
+2.  **Start Sentinel 4 Backend**:
+    ```bash
+    cd sentinel4
+    export GROQ_API_KEY=your_key_here
+    python main.py
+    ```
+3.  **Deploy Dashboard**:
+    Open `frontend/index.html` in your browser.
 
-### Running the System
-1. **Start the Backend Agent**:
-   ```bash
-   python main.py
-   ```
-2. **Launch the Dashboard**:
-   Open `frontend/index.html` in any modern web browser.
+## ⚙️ Configuration & Tuning
+Adjust sensitivities in `config.py`:
+- `SPIKE_Z_THRESHOLD`: Default `3.2` (Sensitivity to sudden jumps).
+- `DRIFT_Z_THRESHOLD`: Default `1.8` (Sensitivity to slow trends).
 
-## Technical Details
-
-- **Language**: Python (Backend), Javascript/CSS/HTML (Frontend)
-- **Primary Libraries**: `aiohttp`, `pandas`, `numpy`, `rich` (Terminal output).
-- **Frontend Design**: Vanilla CSS with a focus on high information scent and spatial clarity.
+---
+**Mission Status**: Fully Integrated & Ready for Deployment.

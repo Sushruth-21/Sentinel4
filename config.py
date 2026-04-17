@@ -3,20 +3,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Example moderator URLs (replace with real ones during hackathon)
-MODERATOR_HISTORY_CSV = "data/history.csv" # offline dataset
-MODERATOR_STREAM_URL = "https://example.com/machines/stream" # SSE or HTTP stream
+# Simulation Server Integration
+SIM_SERVER_URL = "http://localhost:3000"
+MODERATOR_HISTORY_CSV = "data/history.csv" # Still keep for fallback
 
-MACHINES = ["M1", "M2", "M3", "M4"]
-SENSORS = ["temperature", "vibration", "rpm", "current"]
+MACHINES = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"]
+# Map internal sensor names to simulation server keys
+SENSOR_MAP = {
+    "temperature": "temperature_C",
+    "vibration": "vibration_mm_s",
+    "rpm": "rpm",
+    "current": "current_A"
+}
+SENSORS = list(SENSOR_MAP.keys())
 
 # Baseline + anomaly parameters
-BASELINE_WINDOW = 500 # how many historical points to use
-DRIFT_WINDOW = 20 # rolling mean window for drift
-SPIKE_Z_THRESHOLD = 3.0
-DRIFT_Z_THRESHOLD = 1.5
-SILENCE_SECONDS = 30 # if no data for this time, raise silence alert
+BASELINE_WINDOW = 500 
+DRIFT_WINDOW = 20 
+SPIKE_Z_THRESHOLD = 3.2 # Slightly more conservative
+DRIFT_Z_THRESHOLD = 1.8
+SILENCE_SECONDS = 30 
 
 # Groq LLM
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.1-8b-instant" # change if needed
+GROQ_MODEL = "llama-3.1-8b-instant"

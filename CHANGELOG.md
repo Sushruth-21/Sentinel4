@@ -2,7 +2,21 @@
 
 All notable changes to the Sentinel 4 Industrial Monitoring system will be documented in this file.
 
+## [1.4.1] - 2026-04-17
+
+### Added
+- **Simulation Server Integration**: Switched data ingestion from static CSV to live Node.js simulation server.
+- **Asynchronous SSE Ingestion**: Implemented multi-machine SSE stream aggregation.
+- **Automated Alert Reporter**: Added `POST /alert` hook to bridge AI diagnostics back to the simulation server.
+- **Dynamic Baseline Calibration**: Integrated simulation history API for auto-training on startup.
+
+### Fixed
+- **LLM Explanation Parsing**: Corrected list indexing error in `app/llm_explainer.py`.
+- **JSON Depth Logic**: Fixed a crash in `load_history` due to nested simulation response objects.
+- **Baseline Engine API**: Added missing `train` method to support bulk historical ingestion.
+
 ## [1.3.0] - 2026-04-17
+
 
 ### Added
 - **Tactical OS UI Upgrade**: Implemented a high-fidelity "Industrial Neon Noir" design system across the entire application.

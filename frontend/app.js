@@ -1,22 +1,23 @@
 /**
  * SENTINEL 4 - Mission Control Frontend OS
- * Unified Data Binding & View Management
+ * Unified Data Binding & Real-Time Simulation Integration
  */
 
-const machines = ['M1_THERMAL_ENGINE', 'M2_HYDRAULIC_PUMP', 'M3_SERVO_ARRAY', 'M4_COOLING_FAN'];
-const sensors = ['temperature', 'vibration', 'rpm', 'current'];
+const machines = ['CNC_01', 'CNC_02', 'PUMP_03', 'CONVEYOR_04'];
+const sensorKeys = ['temperature_C', 'vibration_mm_s', 'rpm', 'current_A'];
 
 const baseValues = {
-    'M1_THERMAL_ENGINE': { temperature: 80.5, vibration: 1.2, rpm: 1500, current: 3.1 },
-    'M2_HYDRAULIC_PUMP': { temperature: 42.1, vibration: 0.4, rpm: 1200, current: 1.8 },
-    'M3_SERVO_ARRAY': { temperature: 38.9, vibration: 0.1, rpm: 3200, current: 4.2 },
-    'M4_COOLING_FAN': { temperature: 22.4, vibration: 0.8, rpm: 850, current: 0.9 }
+    'CNC_01': { temperature_C: 84.5, vibration_mm_s: 1.8, rpm: 1475, current_A: 13.4 },
+    'CNC_02': { temperature_C: 72.1, vibration_mm_s: 0.9, rpm: 2100, current_A: 11.2 },
+    'PUMP_03': { temperature_C: 45.9, vibration_mm_s: 0.1, rpm: 1800, current_A: 5.8 },
+    'CONVEYOR_04': { temperature_C: 28.4, vibration_mm_s: 0.5, rpm: 450, current_A: 2.1 }
 };
 
 let machineData = {};
 let alerts = [];
 let activeView = 'dashboard';
 let selectedMachine = null;
+let eventSources = {};
 
 // Initialization
 function init() {
@@ -24,29 +25,67 @@ function init() {
         machineData[m] = {
             id: m,
             metrics: { ...baseValues[m] },
-            risk: 0.15, // Base risk
+            risk: 0.15,
             lastUpdated: new Date()
         };
     });
 
-    // Seed some initial instability in M1
-    machineData['M1_THERMAL_ENGINE'].risk = 0.82;
-    machineData['M1_THERMAL_ENGINE'].metrics.temperature = 92.4;
-    alerts.push({
-        id: Date.now(),
-        machineId: 'M1_THERMAL_ENGINE',
-        message: 'Thermal Spike Detected',
-        level: 'CRITICAL',
-        timestamp: new Date()
-    });
-
     setupEventListeners();
-    startSimulation();
+    
+    // Attempt to connect to live simulation server (malendau-hackathon)
+    connectToLiveStreams();
+    
+    // Fallback/Parallel simulation for UI consistency
+    startLocalSimulation();
+    
     renderAll();
 }
 
+function connectToLiveStreams() {
+    machines.forEach(mId => {
+        try {
+            const es = new EventSource(`http://localhost:3000/stream/${mId}`);
+            es.onmessage = (e) => {
+                const reading = JSON.parse(e.data);
+                updateMachineData(mId, reading);
+            };
+            es.onerror = () => {
+                console.warn(`Could not connect to live stream for ${mId}. Ensure sim-server is running on :3000`);
+            };
+            eventSources[mId] = es;
+        } catch (err) {
+            console.error(`SSE Initialization failed for ${mId}`);
+        }
+    });
+}
+
+function updateMachineData(mId, reading) {
+    if (!machineData[mId]) return;
+    
+    machineData[mId].metrics = { ...reading };
+    machineData[mId].lastUpdated = new Date(reading.timestamp);
+    
+    // In a live environment, the risk would come from the backend.
+    // Here we do a simple client-side heuristic for visual feedback.
+    calculateClientRisk(mId);
+    
+    if (activeView === 'dashboard' || (activeView === 'diagnostics' && selectedMachine === mId)) {
+        renderAll();
+    }
+}
+
+function calculateClientRisk(mId) {
+    const metrics = machineData[mId].metrics;
+    const base = baseValues[mId];
+    let risk = 0.1;
+    
+    if (metrics.temperature_C > base.temperature_C * 1.2) risk += 0.4;
+    if (metrics.vibration_mm_s > base.vibration_mm_s * 2.0) risk += 0.4;
+    
+    machineData[mId].risk = Math.min(1.0, risk);
+}
+
 function setupEventListeners() {
-    // Nav buttons
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const viewId = btn.dataset.view;
@@ -57,61 +96,29 @@ function setupEventListeners() {
 
 function switchView(viewId) {
     activeView = viewId;
-    
-    // UI Update
     document.querySelectorAll('.content-view').forEach(v => v.classList.add('hidden'));
     document.getElementById(`view-${viewId}`).classList.remove('hidden');
-
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        if (btn.dataset.view === viewId) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        btn.classList.toggle('active', btn.dataset.view === viewId);
     });
-
     renderAll();
 }
 
-// Data Handling
-function startSimulation() {
+function startLocalSimulation() {
+    // If SSE isn't working, this keeps the UI "alive"
     setInterval(() => {
         machines.forEach(m => {
-            const data = machineData[m];
+            if (machineData[m].lastUpdated && (new Date() - machineData[m].lastUpdated < 2000)) return; // Don't override fresh SSE data
             
-            // Random fluctuation
-            sensors.forEach(s => {
-                const noise = (Math.random() - 0.5) * (baseValues[m][s] * 0.02);
-                data.metrics[s] = Math.max(0, data.metrics[s] + noise);
+            sensorKeys.forEach(s => {
+                const noise = (Math.random() - 0.5) * (baseValues[m][s] * 0.05);
+                machineData[m].metrics[s] = Math.max(0, machineData[m].metrics[s] + noise);
             });
-
-            // Occasional risk spikes
-            if (Math.random() > 0.98) {
-                data.risk = Math.min(1.0, data.risk + 0.2);
-                if (data.risk > 0.7) {
-                    addAlert(m, "Predictive drift anomaly detected", "WARNING");
-                }
-            } else {
-                data.risk = Math.max(0.1, data.risk - 0.01);
-            }
+            renderAll();
         });
-
-        renderAll();
-    }, 2000);
+    }, 3000);
 }
 
-function addAlert(machineId, message, level) {
-    alerts.unshift({
-        id: Date.now(),
-        machineId,
-        message,
-        level,
-        timestamp: new Date()
-    });
-    if (alerts.length > 5) alerts.pop();
-}
-
-// Rendering Logic
 function renderAll() {
     if (activeView === 'dashboard') renderDashboard();
     if (activeView === 'diagnostics') renderDiagnostics();
@@ -126,6 +133,7 @@ function getStatusColor(risk) {
 
 function renderDashboard() {
     const grid = document.getElementById('machine-grid');
+    if (!grid) return;
     grid.innerHTML = '';
 
     machines.forEach(m => {
@@ -152,19 +160,19 @@ function renderDashboard() {
             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">TEMP</p>
-                    <p class="font-mono text-lg ${data.risk > 0.8 ? 'text-error' : 'text-on-background'} font-bold">${data.metrics.temperature.toFixed(1)}°C</p>
+                    <p class="font-mono text-lg ${data.risk > 0.8 ? 'text-error' : 'text-on-background'} font-bold">${data.metrics.temperature_C?.toFixed(1) || '--'}°C</p>
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">VIB</p>
-                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.vibration.toFixed(2)}</p>
+                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.vibration_mm_s?.toFixed(2) || '--'}</p>
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">RPM</p>
-                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.rpm.toFixed(0)}</p>
+                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.rpm?.toFixed(0) || '--'}</p>
                 </div>
                 <div class="bg-surface-container-lowest p-3">
                     <p class="text-[9px] font-headline tracking-widest text-outline mb-1 uppercase">LOAD</p>
-                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.current.toFixed(1)}A</p>
+                    <p class="font-mono text-lg text-on-background font-bold">${data.metrics.current_A?.toFixed(1) || '--'}A</p>
                 </div>
             </div>
             <div class="h-8 w-full bg-surface-container-lowest relative overflow-hidden">
@@ -177,7 +185,6 @@ function renderDashboard() {
     });
 
     renderHeatmap();
-    renderAlertFeed();
 }
 
 function generateGraphPoints(risk) {
@@ -191,32 +198,14 @@ function generateGraphPoints(risk) {
 
 function renderHeatmap() {
     const heatmap = document.getElementById('heatmap-grid');
+    if (!heatmap) return;
     heatmap.innerHTML = '';
     for (let i = 0; i < 36; i++) {
         const cell = document.createElement('div');
         const intensity = Math.random();
-        if (intensity > 0.9) cell.className = 'bg-error animate-pulse';
-        else if (intensity > 0.7) cell.className = 'bg-secondary/40';
-        else cell.className = 'bg-surface-container-high hover:bg-primary-container/20 transition-colors';
+        cell.className = intensity > 0.9 ? 'bg-error animate-pulse' : (intensity > 0.7 ? 'bg-secondary/40' : 'bg-surface-container-high');
         heatmap.appendChild(cell);
     }
-}
-
-function renderAlertFeed() {
-    const feed = document.getElementById('dashboard-alert-feed');
-    feed.innerHTML = '';
-    alerts.forEach(a => {
-        const aElem = document.createElement('div');
-        aElem.className = 'p-3 bg-surface-container-low border border-outline-variant/30 flex justify-between items-center group cursor-pointer hover:bg-error hover:text-background transition-all';
-        aElem.innerHTML = `
-            <div>
-                <p class="font-mono text-[9px] font-bold">${a.machineId}</p>
-                <p class="font-mono text-[10px] uppercase">${a.message}</p>
-            </div>
-            <span class="material-symbols-outlined text-sm">arrow_forward</span>
-        `;
-        feed.appendChild(aElem);
-    });
 }
 
 function renderDiagnostics() {
@@ -224,45 +213,32 @@ function renderDiagnostics() {
     const data = machineData[mId];
 
     document.getElementById('diag-machine-id').innerText = mId;
-    document.getElementById('diag-case-ref').innerText = `CASE_REF: AX-${data.id.split('_')[0]}-${Math.floor(Math.random()*9000)+1000}`;
+    document.getElementById('diag-case-ref').innerText = `CASE_REF: AX-${mId}-${Math.floor(Math.random()*9000)+1000}`;
     
-    const statusText = data.risk >= 0.8 ? 'CRITICAL_FAILURE_LIKELY' : (data.risk >= 0.6 ? 'WARNING_STRESS' : 'STABLE_NODE');
+    const color = getStatusColor(data.risk);
+    const statusText = data.risk >= 0.8 ? 'CRITICAL_FAILURE_POSSIBLE' : (data.risk >= 0.6 ? 'WARNING_STRESS' : 'STABLE_NODE');
+    
     document.getElementById('diag-status').innerText = `Status: ${statusText}`;
-    document.getElementById('diag-status').className = `text-sm font-headline font-bold uppercase ${data.risk >= 0.8 ? 'text-error' : (data.risk >= 0.6 ? 'text-secondary' : 'text-primary-container')}`;
+    document.getElementById('diag-status').className = `text-sm font-headline font-bold uppercase text-${color}`;
+    document.getElementById('diag-header-card').className = `bg-surface-container-low p-6 border-l-4 border-${color}`;
 
-    // Header card styling
-    const headerCard = document.getElementById('diag-header-card');
-    headerCard.className = `bg-surface-container-low p-6 border-l-4 ${data.risk >= 0.8 ? 'border-error' : (data.risk >= 0.6 ? 'border-secondary' : 'border-primary-container')}`;
-
-    // Logic Chain
     const narrative = document.getElementById('ai-narrative');
     if (data.risk >= 0.8) {
-        narrative.innerHTML = `
-            <span class="text-on-surface">Analysis:</span> Non-linear friction observed in ${mId} drive train. 
-            <br/><br/>
-            <span class="text-on-surface">Recommendation:</span> Immediate lubrication and bearing check. Risk of cascade failure is HIGH.
-            <br/><br/>
-            <span class="text-on-surface">Status:</span> Critical bias in temperature (${data.metrics.temperature.toFixed(1)}°C).
-        `;
+        narrative.innerHTML = `Analysis reveals abnormal oscillation in ${mId}. <br/><br/> Recommendation: Inspect bearing casing. Thermal drift (${data.metrics.temperature_C?.toFixed(1)}°C) suggests internal friction.`;
     } else {
-        narrative.innerHTML = `
-            <span class="text-on-surface">Analysis:</span> Waveform harmonics for ${mId} are within baseline 5% variance.
-            <br/><br/>
-            <span class="text-on-surface">Recommendation:</span> Continue scheduled monitoring. No manual intervention required.
-        `;
+        narrative.innerHTML = `Machine ${mId} is operating within nominal parameters. <br/><br/> Recommendation: Routine maintenance cycle maintained.`;
     }
 
-    // Update Pulse Chart
     const points = generateGraphPoints(data.risk * 2);
     document.getElementById('diag-pulse-line').setAttribute('points', points.split(' ').map((p, i) => {
         if (!p) return '';
-        const [x, y] = p.split(',');
-        return `${i*50},${y}`;
+        const [x, y] = p.split(','); return `${i*50},${y}`;
     }).join(' '));
 }
 
 function renderMaintenance() {
     const tbody = document.getElementById('maintenance-table-body');
+    if (!tbody) return;
     tbody.innerHTML = '';
     
     machines.forEach(m => {
@@ -284,54 +260,13 @@ function renderMaintenance() {
     });
 
     const dispatch = document.getElementById('dispatch-unit');
-    if (dispatch.options.length === 0) {
+    if (dispatch && dispatch.options.length === 0) {
         machines.forEach(m => {
             const opt = document.createElement('option');
-            opt.value = m;
-            opt.innerText = m;
+            opt.value = m; opt.innerText = m;
             dispatch.appendChild(opt);
         });
     }
-
-    renderTimeline();
 }
 
-function renderTimeline() {
-    const container = document.getElementById('timeline-container');
-    container.innerHTML = '<div class="absolute left-9 top-8 bottom-8 w-px bg-outline-variant/30"></div>';
-    
-    const events = [
-        { title: 'CORE_SYNC', time: '12H_AGO', msg: 'System integrity handshake complete across all sectors.' },
-        { title: 'THRESHOLD_UPDATE', time: '2D_AGO', msg: 'Updated Z-score drift sensitivities for Facility Alpha.' }
-    ];
-
-    events.forEach(ev => {
-        const item = document.createElement('div');
-        item.className = 'relative flex gap-6 mb-8';
-        item.innerHTML = `
-            <div class="z-10 w-6 h-6 bg-surface-container-highest border border-primary-container flex items-center justify-center">
-                <div class="w-2 h-2 bg-primary-container"></div>
-            </div>
-            <div>
-                <div class="flex items-center gap-3">
-                    <span class="font-mono text-xs text-primary-container font-bold">${ev.title}</span>
-                    <span class="font-mono text-[10px] text-outline bg-surface-container-high px-2 py-0.5">${ev.time}</span>
-                </div>
-                <p class="text-sm text-on-surface-variant font-body mt-1">${ev.msg}</p>
-            </div>
-        `;
-        container.appendChild(item);
-    });
-}
-
-// Ingest Auth Sequence (Visual Only)
-let authProgress = 75;
-setInterval(() => {
-    authProgress = Math.min(100, authProgress + (Math.random() < 0.1 ? 1 : 0));
-    if (authProgress === 100) authProgress = 75;
-    const bar = document.getElementById('auth-progress');
-    if (bar) bar.style.width = authProgress + '%';
-}, 1000);
-
-// Run
 init();

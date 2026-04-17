@@ -22,3 +22,11 @@ class BaselineEngine:
             return 0.0, 1.0 # avoids division by zero, treated as "not enough history"
         arr = np.array(values)
         return float(arr.mean()), float(arr.std() or 1.0)
+
+    def train(self, df):
+        """Pre-populate history from a DataFrame (expecting columns machine_id, sensor_name...)"""
+        for _, row in df.iterrows():
+            m_id = row.get("machine_id")
+            for s in SENSORS:
+                if s in row:
+                    self.add_history(m_id, s, row[s])
