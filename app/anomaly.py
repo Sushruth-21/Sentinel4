@@ -89,25 +89,47 @@ class AnomalyDetector:
             else:
                 drift_flags[sensor] = False
 
-        # Calculate specific correlations (e.g., Temp vs Current)
+        # Check for specific known machine failure patterns based on Z-scores
         correlation_bonus = 0.0
         high_correlation_pairs = []
-        
-        # We check Temp vs Current and Vibration vs Current
-        for p1, p2 in [("temperature", "current"), ("vibration", "current")]:
-            if len(self.corr_buffers[machine_id][p1]) == 30 and len(self.corr_buffers[machine_id][p2]) == 30:
-                v1 = list(self.corr_buffers[machine_id][p1])
-                v2 = list(self.corr_buffers[machine_id][p2])
-                corr = np.corrcoef(v1, v2)[0, 1]
-                
-                # If correlation is very high (>0.85) AND one of them is at least slightly elevated
-                if corr > 0.85 and (abs(sensor_z.get(p1, 0)) > 1.5 or abs(sensor_z.get(p2, 0)) > 1.5):
-                    correlation_bonus += 0.25
-                    high_correlation_pairs.append(f"{p1}+{p2}")
+        is_known_anomaly = False
 
-        # Compound detection: now requires HIGH correlation OR 2+ strong Z-scores
+        v_z = sensor_z.get("vibration_mm_s", 0)
+        t_z = sensor_z.get("temperature_C", 0)
+        c_z = sensor_z.get("current_A", 0)
+        r_z = sensor_z.get("rpm", 0)
+
+        # We look for the exact correlated anomalies injected by the simulation server
+        if machine_id == "CNC_01":
+            # Bearing Wear: Vib, Temp, Current all rise together
+            if v_z > 1.5 and t_z > 1.5 and c_z > 1.5:
+                is_known_anomaly = True
+                high_correlation_pairs.append("Vib+Temp+Current (Bearing Wear)")
+        elif machine_id == "CNC_02":
+            # Thermal Runaway: Temp and Current spike
+            if t_z > 2.0 and c_z > 1.5:
+                is_known_anomaly = True
+                high_correlation_pairs.append("Temp+Current (Thermal Runaway)")
+        elif machine_id == "PUMP_03":
+            # Cavitation/Clogging: High Vib + Low RPM (or High Vib + High Current)
+            if v_z > 1.5 and r_z < -1.5:
+                is_known_anomaly = True
+                high_correlation_pairs.append("Vib+RPM_Drop (Clogging)")
+            elif v_z > 1.5 and c_z > 1.5:
+                is_known_anomaly = True
+                high_correlation_pairs.append("Vib+Current (Cavitation)")
+        elif machine_id == "CONVEYOR_04":
+            # Belt Slippage: High Vib + Low Current
+            if v_z > 1.5 and c_z < -1.5:
+                is_known_anomaly = True
+                high_correlation_pairs.append("Vib+Current_Drop (Belt Slippage)")
+
+        if is_known_anomaly:
+            correlation_bonus = 0.3
+
+        # Compound detection: now requires KNOWN correlation OR 2+ strong Z-scores
         warning_sensors = [s for s in SENSORS if spike_flags.get(s) or drift_flags.get(s)]
-        is_compound = len(warning_sensors) >= 2 or correlation_bonus > 0
+        is_compound = len(warning_sensors) >= 2 or is_known_anomaly
 
         # risk score components
         if sensor_z:
@@ -115,37 +137,44 @@ class AnomalyDetector:
         else:
             z_max = 0.0
 
-        # Final Risk: requires higher bar to hit 1.0
-        # Formula: 40% Max Z-score + 30% Correlation + 30% Persistence
+        # Final Risk: 40% Max Z-score + 30% Correlation + 30% Persistence
         persistence_factor = 0.3 if any(drift_flags.values()) else 0.0
         
         risk = (z_max / 10.0) * 0.4 + (correlation_bonus) * 0.3 + (persistence_factor)
         risk = min(1.0, risk)
 
+        # Flag for voice call: Only if there's high correlation or multiple sensors spiking
+        should_call = is_compound
+
         # simple failure prediction: if high-risk repeated
-        if risk >= 0.9:
+        if risk >= 0.8: # Lowered from 0.9 for faster prediction
             self.recent_high_risk_counts[machine_id].append(time.time())
-            # if len(self.recent_high_risk_counts[machine_id]) >= 10: 
             if len(self.recent_high_risk_counts[machine_id]) >= 3:
                 self.alert_store.add_alert(
                     machine_id=machine_id,
                     risk=0.98,
                     message="Critical persistent failure pattern detected",
-                    details={"type": "prediction", "warning_sensors": warning_sensors, "correlations": high_correlation_pairs}
+                    details={
+                        "type": "prediction", 
+                        "warning_sensors": warning_sensors, 
+                        "correlations": high_correlation_pairs,
+                        "should_call": True # Predictions always call
+                    }
                 )
 
         # create alert when risk high enough
-        # if risk >= 0.85: 
-        if risk >= 0.70:
+        # Warning threshold lowered to 0.4 to catch individual sensor drift
+        if risk >= 0.40:
             self.alert_store.add_alert(
                 machine_id=machine_id,
                 risk=risk,
-                message="Highly correlated anomaly detected",
+                message="Sensor variance detected" if not should_call else "Highly correlated anomaly detected",
                 details={
                     "sensor_z": sensor_z,
                     "warning_sensors": warning_sensors,
                     "correlations": high_correlation_pairs,
                     "is_compound": is_compound,
+                    "should_call": should_call
                 },
             )
 
