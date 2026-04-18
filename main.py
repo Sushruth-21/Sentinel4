@@ -1,5 +1,8 @@
 import asyncio
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from collections import defaultdict
 from typing import Any, Dict
 
@@ -19,8 +22,46 @@ from config import (
     DATABASE_URL, HISTORY_API_HOST, HISTORY_API_PORT, MACHINES, 
     SENSOR_MAP, SENSORS, SIM_SERVER_URL,
     VOICE_ALERT_COUNT_THRESHOLD, VOICE_ALERT_WINDOW_SECONDS,
-    VOICE_CALL_COOLDOWN_SECONDS, GLOBAL_VOICE_COOLDOWN_SECONDS
+    VOICE_CALL_COOLDOWN_SECONDS, GLOBAL_VOICE_COOLDOWN_SECONDS,
+    EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT, EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECEIVER
 )
+
+async def send_maintenance_email(machine_id: str, slot: str, diagnostic: str):
+    """Send an automated repair notification email with the maintenance slot and AI diagnostic."""
+    if not all([EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECEIVER]):
+        print("⚠️ Email not configured. Skipping email notification.")
+        return
+
+    msg = MIMEMultipart()
+    msg['From'] = EMAIL_SENDER
+    msg['To'] = EMAIL_RECEIVER
+    msg['Subject'] = f"🚨 URGENT: Maintenance Scheduled for {machine_id}"
+
+    body = f"""
+    SENTINEL 4 - AUTOMATED MAINTENANCE NOTIFICATION
+    ----------------------------------------------
+    Machine ID: {machine_id}
+    Scheduled Slot: {slot}
+    
+    AI DIAGNOSTIC:
+    {diagnostic}
+    
+    ACTION REQUIRED:
+    Please ensure a technician is available for the assigned slot. 
+    Review the tactical dashboard for real-time telemetry.
+    
+    -- Sentinel 4 Mission Control
+    """
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        with smtplib.SMTP(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+            print(f"📧 Maintenance notification email sent to {EMAIL_RECEIVER}")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
 
 async def send_alert_to_sim_server(machine_id: str, risk: float, message: str, reading: Dict[str, float]):
     """Push detected anomaly to the simulation server for the competition."""
@@ -156,9 +197,10 @@ async def agent_loop():
 
                 current_time = time.time()
                 if alert.risk >= 0.4:
-                    # mission-wide 60s cooldown for API posting
+                    # mission-wide 10s cooldown for API posting (was 60s)
+                    # This keeps the dashboard "Live" while voice is silent.
                     last_sent = last_alert_time.get(alert.machine_id, 0)
-                    if current_time - last_sent > 60:
+                    if current_time - last_sent > 10:
                         await send_alert_to_sim_server(
                             alert.machine_id,
                             alert.risk,
@@ -166,7 +208,7 @@ async def agent_loop():
                             latest_values[alert.machine_id],
                         )
                         last_alert_time[alert.machine_id] = current_time
-                        print(f"📢 Alert posted to simulation server for {alert.machine_id}")
+                        print(f"📢 Dashboard alert sync for {alert.machine_id}")
 
                     # 2. Voice Call Logic: IMMEDIATELY on correlated anomaly
                     is_correlated = alert.details.get("should_call", False)
@@ -182,7 +224,11 @@ async def agent_loop():
                             broadcast_voice_alert(f"Emergency alert for machine {alert.machine_id}. {detailed_explanation}")
                             
                             # Bonus: Auto-book maintenance slot
-                            await schedule_maintenance(alert.machine_id)
+                            slot = await schedule_maintenance(alert.machine_id)
+                            
+                            # New: Send detailed email report
+                            if slot:
+                                await send_maintenance_email(alert.machine_id, slot, detailed_explanation)
 
                             last_voice_call_time[alert.machine_id] = current_time
                             last_global_voice_call_time = current_time
