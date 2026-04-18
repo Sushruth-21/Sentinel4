@@ -10,11 +10,29 @@ This document provides a step-by-step guide to deploying the **Sentinel 4** Indu
 2.  **Sentinel 4 Agent (Python/Asyncio)**: Processes data, detects anomalies, and manages AI diagnostics.
 3.  **Frontend Dashboard (Static HTML/JS)**: Visualizes the data.
 
+## 🚀 Option 1: Railway (Recommended for Backend)
+
+[Railway](https://railway.app/) is arguably the simplest way to deploy persistent Python and Node.js services.
+
+### 1. Deploy Simulation Server (Node.js)
+1.  Connect your GitHub repo to Railway.
+2.  Add a new **Empty Service** and point it to the `/malendau-hackathon` directory.
+3.  Railway will auto-detect the Node.js environment and run `npm start`.
+4.  Copy the generated **Public Domain** (e.g., `https://simulation-production.up.railway.app`).
+
+### 2. Deploy Sentinel 4 Agent (Python)
+1.  Add another service from the same repo, pointing to the **Root** directory.
+2.  Railway will detect the `requirements.txt` and `main.py`.
+3.  Go to the **Variables** tab and add:
+    -   `SIM_SERVER_URL`: The URL of your Simulation Server (from step 1).
+    -   `GROQ_API_KEY`: Your Groq API key.
+    -   `TWILIO_ACCOUNT_SID`: (Optional)
+    -   `EMAIL_SENDER`: (Optional)
+4.  Railway handles persistent loops automatically, so your `asyncio` monitor will stay active 24/7.
+
 ---
 
-## 🚀 Option 1: Render (Recommended for Full Stack)
-
-[Render](https://render.com/) is excellent for hosting both Node.js and Python services with easy scaling.
+## 🚀 Option 2: Render (Alternative)
 
 ### 1. Deploy Simulation Server (Node.js)
 -   **Service Type**: Web Service.
